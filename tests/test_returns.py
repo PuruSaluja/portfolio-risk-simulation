@@ -225,7 +225,7 @@ def test_a_compound_return_over_a_long_history_does_not_overflow() -> None:
 
 
 def test_observed_periods_per_year_counts_the_gaps_between_dates() -> None:
-    # 2023 had 260 weekdays, 2024 262: 522 days, 521 gaps over 730 days.
+    # 2023 had 260 weekdays, 2024 262: 522 days, 521 gaps over 729 days.
     days = pd.bdate_range("2023-01-02", "2024-12-31")
     assert observed_periods_per_year(days) == pytest.approx(
         521 / ((days[-1] - days[0]).days / 365.25)

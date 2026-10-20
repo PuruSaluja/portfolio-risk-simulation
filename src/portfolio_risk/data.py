@@ -75,7 +75,8 @@ DEFAULT_CACHE = Path("data") / "prices.csv"
 # A ticker whose first price comes later than this after the window's start joined
 # part way through; a week covers the holidays at the start of a year. The same
 # allowance applies to a ticker's last price against the others', and to the gap
-# between two of its prices (US markets have not closed for longer since 2001).
+# between two of its prices: the longest in the default data is 5 days, over New Year
+# 2007 and Hurricane Sandy in 2012.
 MAX_START_DELAY = timedelta(days=7)
 
 COLUMNS: tuple[str, ...] = (
@@ -95,7 +96,7 @@ _YAHOO_FIELDS = {
     "split": "Stock Splits",
     "volume": "Volume",
 }
-# Fields yfinance leaves out when no ticker in the request ever paid one.
+# Fields yfinance gives only for funds: a request for stocks alone (AAPL) has none.
 _OPTIONAL_FIELDS = {"capital_gain"}
 
 _TICKER = re.compile(r"^\^?[A-Z0-9][A-Z0-9.=-]{0,14}$")
