@@ -135,15 +135,25 @@ def fetch_prices(
     end: date = DEFAULT_END,
     *,
     download: Callable[..., pd.DataFrame] | None = None,
+    today: date | None = None,
 ) -> pd.DataFrame:
     """Daily prices for ``tickers`` from ``start`` to ``end`` inclusive, checked.
 
     Returns one row per ticker and trading day, with the columns in ``COLUMNS``, sorted
-    by ticker (in the order given) and date. ``download`` stands in for
-    ``yfinance.download`` and is called with the same arguments.
+    by ticker (in the order given) and date. ``end`` must be before ``today`` (by
+    default the date in New York), because during a session Yahoo's bar for the day
+    holds the latest trade, not the close, and a later fetch would differ.
+    ``download`` stands in for ``yfinance.download`` and is called with the same
+    arguments.
     """
     tickers = validate_tickers(tickers)
     _validate_window(start, end)
+    today = today or pd.Timestamp.now(tz="America/New_York").date()
+    if end >= today:
+        raise DataError(
+            f"the window ends on {end}, not before today ({today} in New York); the day's "
+            "bar may still be trading, so end the window on an earlier day"
+        )
     if download is None:
         import yfinance
 

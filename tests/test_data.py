@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -131,6 +132,24 @@ def test_symbols_with_dots_carets_and_dashes_are_accepted() -> None:
 def test_a_window_that_ends_before_it_starts_is_refused() -> None:
     with pytest.raises(DataError, match="starts .2024-01-12. after it ends .2024-01-01."):
         fetch(yahoo_frame(), start=END, end=START)
+
+
+def test_a_window_that_reaches_today_is_refused() -> None:
+    download = fake_download(yahoo_frame())
+    with pytest.raises(DataError, match=r"ends on 2024-01-12, not before today \(2024-01-12"):
+        fetch_prices(("AAA", "BBB"), START, END, download=download, today=date(2024, 1, 12))
+    with pytest.raises(DataError, match="not before today"):
+        fetch_prices(("AAA", "BBB"), START, date(2024, 1, 20), download=download, today=END)
+    assert download.calls == []
+    prices = fetch_prices(("AAA", "BBB"), START, END, download=download, today=date(2024, 1, 13))
+    assert len(prices) == 18
+
+
+def test_today_defaults_to_the_date_in_new_york() -> None:
+    new_york = pd.Timestamp.now(tz="America/New_York").date()
+    download = fake_download(yahoo_frame())
+    with pytest.raises(DataError, match=re.escape(f"not before today ({new_york} in New York)")):
+        fetch_prices(("AAA", "BBB"), START, new_york, download=download)
 
 
 def test_a_datetime_is_not_taken_for_a_date() -> None:
