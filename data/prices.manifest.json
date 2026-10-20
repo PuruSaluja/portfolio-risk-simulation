@@ -1,0 +1,75 @@
+{
+  "source": "Yahoo Finance, via yfinance 1.7.0",
+  "fetched_at": "2026-10-20T20:47:50+00:00",
+  "start": "2005-01-01",
+  "end": "2026-09-30",
+  "file": "prices.csv",
+  "sha256": "b5c1484cb49ea2259e83ca465cdde57e0e0df2ec5d52dff4a85c6ead80538168",
+  "rows": 43760,
+  "tickers": {
+    "SPY": {
+      "rows": 5470,
+      "first": "2005-01-03",
+      "last": "2026-09-30",
+      "dividends": 87,
+      "capital_gains": 0,
+      "splits": 0
+    },
+    "IWM": {
+      "rows": 5470,
+      "first": "2005-01-03",
+      "last": "2026-09-30",
+      "dividends": 87,
+      "capital_gains": 0,
+      "splits": 1
+    },
+    "EFA": {
+      "rows": 5470,
+      "first": "2005-01-03",
+      "last": "2026-09-30",
+      "dividends": 41,
+      "capital_gains": 0,
+      "splits": 1
+    },
+    "EEM": {
+      "rows": 5470,
+      "first": "2005-01-03",
+      "last": "2026-09-30",
+      "dividends": 44,
+      "capital_gains": 0,
+      "splits": 2
+    },
+    "AGG": {
+      "rows": 5470,
+      "first": "2005-01-03",
+      "last": "2026-09-30",
+      "dividends": 260,
+      "capital_gains": 0,
+      "splits": 0
+    },
+    "TLT": {
+      "rows": 5470,
+      "first": "2005-01-03",
+      "last": "2026-09-30",
+      "dividends": 259,
+      "capital_gains": 0,
+      "splits": 0
+    },
+    "GLD": {
+      "rows": 5470,
+      "first": "2005-01-03",
+      "last": "2026-09-30",
+      "dividends": 0,
+      "capital_gains": 0,
+      "splits": 0
+    },
+    "VNQ": {
+      "rows": 5470,
+      "first": "2005-01-03",
+      "last": "2026-09-30",
+      "dividends": 87,
+      "capital_gains": 0,
+      "splits": 0
+    }
+  }
+}
