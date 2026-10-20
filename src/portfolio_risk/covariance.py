@@ -45,6 +45,18 @@ def _values(returns: pd.DataFrame, minimum: int = 2) -> np.ndarray:
     return values
 
 
+def _centred(values: np.ndarray, mean: np.ndarray) -> np.ndarray:
+    """Deviations from the mean, exactly zero for an asset whose returns never vary.
+
+    The mean of equal values can differ from them in the last bit, which would give such
+    an asset a variance of rounding error (about 1e-36) instead of zero, and correlations
+    computed from noise instead of a refusal.
+    """
+    centred = values - mean
+    centred[:, np.ptp(values, axis=0) == 0.0] = 0.0
+    return centred
+
+
 def _frame(matrix: np.ndarray, returns: pd.DataFrame) -> pd.DataFrame:
     # Exactly symmetric: products summed in different orders can differ in the last bit.
     matrix = (matrix + matrix.T) / 2.0
@@ -54,7 +66,7 @@ def _frame(matrix: np.ndarray, returns: pd.DataFrame) -> pd.DataFrame:
 def sample_covariance(returns: pd.DataFrame) -> pd.DataFrame:
     """The unbiased sample covariance (dividing by ``n - 1``)."""
     values = _values(returns)
-    centred = values - values.mean(axis=0)
+    centred = _centred(values, values.mean(axis=0))
     return _frame(centred.T @ centred / (len(values) - 1), returns)
 
 
@@ -82,7 +94,7 @@ def ewma_covariance(
     values = _values(returns, minimum=1)
     weights = ewma_weights(len(values), decay)
     if demean:
-        values = values - weights @ values
+        values = _centred(values, weights @ values)
     return _frame((values * weights[:, None]).T @ values, returns)
 
 
@@ -90,7 +102,7 @@ def ledoit_wolf_covariance(returns: pd.DataFrame) -> tuple[pd.DataFrame, float]:
     """The covariance shrunk toward a scaled identity, and the shrinkage intensity used."""
     values = _values(returns)
     n, p = values.shape
-    x = values - values.mean(axis=0)
+    x = _centred(values, values.mean(axis=0))
     sample = x.T @ x / n
     # Target: the identity scaled by the average variance.
     mu = np.trace(sample) / p

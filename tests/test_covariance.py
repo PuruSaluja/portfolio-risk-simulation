@@ -269,3 +269,21 @@ def test_unusable_covariance_matrices_are_refused(matrix, labels, message) -> No
     for function in (correlation, volatilities, lambda c: annualise(c, 252)):
         with pytest.raises(ValueError, match=message):
             function(cov)
+
+
+@pytest.mark.parametrize("estimate", [sample_covariance, lambda r: ewma_covariance(r, demean=True)])
+def test_an_asset_whose_returns_never_vary_has_no_variance_and_no_correlation(estimate) -> None:
+    returns = SMALL[["A"]].assign(Flat=0.01)  # the mean of ten 0.01s is not exactly 0.01
+    cov = estimate(returns)
+    assert cov.loc["Flat", "Flat"] == 0.0
+    assert cov.loc["A", "Flat"] == 0.0
+    with pytest.raises(ValueError, match="Flat has a variance of 0.0"):
+        correlation(cov)
+
+
+def test_ledoit_wolf_gives_an_asset_that_never_varies_only_the_target_s_variance() -> None:
+    returns = SMALL[["A"]].assign(Flat=0.01)
+    cov, shrinkage = ledoit_wolf_covariance(returns)
+    mu = np.var(SMALL["A"].to_numpy()) / 2  # the flat asset adds nothing to the trace
+    assert cov.loc["Flat", "Flat"] == pytest.approx(shrinkage * mu, rel=1e-12)
+    assert cov.loc["A", "Flat"] == 0.0
