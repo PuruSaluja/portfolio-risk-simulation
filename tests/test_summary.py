@@ -80,6 +80,23 @@ def test_monthly_volatility_uses_month_total_returns_and_twelve_a_year() -> None
     )
 
 
+def test_the_autocorrelation_figures_come_from_the_daily_total_returns() -> None:
+    p = prices(seed=5)
+    summary = summarise(p)
+    bbb = p[p["ticker"] == "BBB"].set_index("date")
+    daily = ((bbb["close"] + bbb["dividend"]) / bbb["close"].shift(1) - 1).iloc[1:]
+    d = daily.to_numpy() - daily.mean()
+    f = summary["funds"]["BBB"]
+    assert f["autocorrelation_lag1"] == pytest.approx(np.dot(d[:-1], d[1:]) / np.dot(d, d))
+    windows = (1 + daily).rolling(21).apply(np.prod, raw=True).dropna() - 1
+    assert f["volatility_21day_overlapping"] == pytest.approx(
+        windows.std() * math.sqrt(252 / 21), rel=1e-9
+    )
+    rho = [np.dot(d[:-k], d[k:]) / np.dot(d, d) for k in range(1, 21)]
+    implied = math.sqrt(1 + 2 * sum((1 - k / 21) * rho[k - 1] for k in range(1, 21)))
+    assert f["volatility_ratio_implied_21day"] == pytest.approx(implied, rel=1e-9)
+
+
 def test_the_command_prints_and_writes_the_figures(tmp_path: Path, capsys) -> None:
     cache = tmp_path / "prices.csv"
     manifest = write_cache(

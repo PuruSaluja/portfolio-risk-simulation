@@ -8,9 +8,11 @@ fund:
   what dividends added), annualised with the periods the data actually holds per year
   rather than the 252 convention, so it is the growth a holder saw;
 - the annualised mean and volatility of daily returns (252 a year), and the volatility
-  of monthly returns (12 a year): if daily returns were uncorrelated from day to day
-  the two volatilities would agree, so a gap measures how far the square-root-of-time
-  rule is off for that fund;
+  of calendar-month returns (12 a year) and of returns over every 21-trading-day window
+  (252 / 21 a year): if daily returns were uncorrelated from day to day these would
+  agree, so a gap measures how far the square-root-of-time rule is off for that fund;
+- the lag-one autocorrelation of daily returns, and the 21-day volatility, as a share
+  of the scaled daily one, that the autocorrelations at lags 1 to 20 imply;
 - the latest EWMA volatility (decay 0.94), what the recent past implies.
 
 Then the correlation matrix of daily returns and the Ledoit-Wolf shrinkage intensity.
@@ -35,6 +37,8 @@ from portfolio_risk import returns as ret
 from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
 
 EWMA_DECAY = 0.94
+# Trading days in a month, for the overlapping-window volatility.
+MONTH = 21
 
 
 def summarise(prices: pd.DataFrame) -> dict[str, Any]:
@@ -61,6 +65,11 @@ def summarise(prices: pd.DataFrame) -> dict[str, Any]:
                 ret.annualised_volatility(daily[ticker], ret.TRADING_DAYS_PER_YEAR)
             ),
             "volatility_monthly": float(ret.annualised_volatility(monthly[ticker], 12)),
+            "volatility_21day_overlapping": ret.overlapping_volatility(
+                daily[ticker], MONTH, ret.TRADING_DAYS_PER_YEAR
+            ),
+            "autocorrelation_lag1": ret.autocorrelation(daily[ticker], 1),
+            "volatility_ratio_implied_21day": ret.implied_volatility_ratio(daily[ticker], MONTH),
             "volatility_ewma_latest": math.sqrt(
                 float(ewma.loc[ticker, ticker]) * ret.TRADING_DAYS_PER_YEAR
             ),
@@ -97,12 +106,17 @@ def _print(summary: dict[str, Any]) -> None:
         f"{summary['last_close']} ({summary['trading_days_per_year_observed']:.2f} "
         "trading days a year)"
     )
-    print(f"{'':6} {'compound':>9} {'price':>7} {'mean':>7} {'vol':>7} {'vol(m)':>7} {'ewma':>7}")
+    print(
+        f"{'':6} {'compound':>9} {'price':>7} {'mean':>7} {'vol':>7} {'vol(m)':>7} "
+        f"{'vol(21)':>7} {'ewma':>7} {'rho1':>6} {'implied':>7}"
+    )
     for ticker, f in summary["funds"].items():
         print(
             f"{ticker:<6} {f['compound_return']:>9.2%} {f['price_only_compound_return']:>7.2%} "
             f"{f['mean_return']:>7.2%} {f['volatility_daily']:>7.2%} "
-            f"{f['volatility_monthly']:>7.2%} {f['volatility_ewma_latest']:>7.2%}"
+            f"{f['volatility_monthly']:>7.2%} {f['volatility_21day_overlapping']:>7.2%} "
+            f"{f['volatility_ewma_latest']:>7.2%} {f['autocorrelation_lag1']:>6.3f} "
+            f"{f['volatility_ratio_implied_21day']:>7.3f}"
         )
     tickers = list(summary["correlation"])
     print("\nCorrelation of daily returns")
