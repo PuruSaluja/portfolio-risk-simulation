@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Environment
+.env
+.env.local
+
+# Fetched market data: Yahoo's prices are not redistributed. The manifest
+# beside the cache is committed.
+data/*.csv
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
