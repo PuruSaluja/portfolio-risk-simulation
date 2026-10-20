@@ -479,7 +479,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             load_cache(args.cache)
             _print_summary(read_manifest(args.cache))
             print(f"{args.cache} matches its manifest.")
-    except DataError as exc:
+    except (DataError, OSError) as exc:  # OSError: the cache or manifest cannot be written
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0

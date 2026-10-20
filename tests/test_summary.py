@@ -105,3 +105,14 @@ def test_the_command_refuses_a_damaged_cache_plainly(tmp_path: Path, capsys) -> 
     assert main(["--cache", str(tmp_path / "prices.csv")]) == 1
     err = capsys.readouterr().err
     assert err.startswith("error: ") and "manifest.json is missing" in err
+
+
+def test_an_unwritable_json_file_is_reported_before_anything_is_printed(
+    tmp_path: Path, capsys
+) -> None:
+    cache = tmp_path / "prices.csv"
+    write_cache(prices(), cache, start=date(2023, 1, 1), end=date(2024, 12, 31), source="test")
+    assert main(["--cache", str(cache), "--json", str(tmp_path)]) == 1  # a folder
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("error: ") and "Traceback" not in captured.err

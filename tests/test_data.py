@@ -527,3 +527,16 @@ def test_a_bad_date_on_the_command_line_is_refused(capsys) -> None:
         main(["fetch", "--start", "2024-02-30"])
     assert exit_.value.code == 2
     assert "not a date (YYYY-MM-DD): '2024-02-30'" in capsys.readouterr().err
+
+
+def test_fetch_reports_an_unwritable_cache_without_a_traceback(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    frame = yahoo_frame()
+    monkeypatch.setattr(data, "fetch_prices", lambda tickers, start, end: fetch(frame, tickers))
+    folder = tmp_path / "prices.csv"
+    folder.mkdir()  # a folder where the cache file should go
+    args = ["fetch", "--tickers", "AAA,BBB", "--start", "2024-01-01", "--end", "2024-01-12"]
+    assert main([*args, "--out", str(folder)]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: ") and "Traceback" not in err

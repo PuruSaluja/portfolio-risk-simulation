@@ -127,15 +127,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         prices = load_cache(args.cache)
         sha256 = read_manifest(args.cache)["sha256"]
         summary = {"cache_sha256": sha256, **summarise(prices)}
-    except (DataError, ValueError) as exc:
+        # Written before anything is printed, so a failure leaves no half-finished run.
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.json, "w", encoding="utf-8", newline="\n") as out:
+                json.dump(summary, out, indent=2)
+                out.write("\n")
+    except (DataError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     _print(summary)
-    if args.json:
-        args.json.parent.mkdir(parents=True, exist_ok=True)
-        with open(args.json, "w", encoding="utf-8", newline="\n") as out:
-            json.dump(summary, out, indent=2)
-            out.write("\n")
     return 0
 
 
