@@ -5,7 +5,11 @@ description = "Monte Carlo simulation and risk analysis of multi-asset portfolio
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "yfinance>=0.2.54",
+]
 
 [project.optional-dependencies]
 dev = [
