@@ -11,9 +11,12 @@ from portfolio_risk.returns import (
     annualised_mean,
     annualised_return,
     annualised_volatility,
+    autocorrelation,
     compound,
+    implied_volatility_ratio,
     log_returns,
     observed_periods_per_year,
+    overlapping_volatility,
     price_returns,
     total_returns,
 )
@@ -246,3 +249,82 @@ def test_observed_periods_per_year_refuses_unusable_dates(index, message) -> Non
 
 def test_the_conventional_periods_per_year() -> None:
     assert PERIODS_PER_YEAR == {"D": 252, "W": 52, "M": 12, "Q": 4, "Y": 1}
+
+
+def test_autocorrelation_is_the_lagged_covariance_over_the_variance() -> None:
+    values = np.array([0.01, -0.02, 0.015, 0.0, -0.005, 0.02])
+    d = values - values.mean()
+    for lag in (1, 2, 3):
+        expected = np.dot(d[:-lag], d[lag:]) / np.dot(d, d)
+        assert autocorrelation(pd.Series(values), lag) == pytest.approx(expected, rel=1e-12)
+
+
+def test_autocorrelation_recovers_an_autoregressive_coefficient() -> None:
+    rng = np.random.default_rng(4)
+    noise = rng.normal(0, 0.01, 20000)
+    values = np.empty_like(noise)
+    values[0] = noise[0]
+    for t in range(1, len(noise)):
+        values[t] = -0.3 * values[t - 1] + noise[t]
+    series = pd.Series(values)
+    assert autocorrelation(series) == pytest.approx(-0.3, abs=0.02)
+    assert autocorrelation(series, 2) == pytest.approx(0.09, abs=0.02)
+
+
+def test_alternating_returns_are_almost_perfectly_negatively_autocorrelated() -> None:
+    series = pd.Series([0.01, -0.01] * 50)
+    assert autocorrelation(series) == pytest.approx(-0.99)  # -(n - 1) / n
+    assert implied_volatility_ratio(series, 2) == pytest.approx(0.1)  # sqrt(1 - 0.99)
+
+
+def test_overlapping_volatility_compounds_every_window() -> None:
+    values = [0.01, -0.02, 0.03, 0.005, -0.01]
+    windows = [(1 + a) * (1 + b) - 1 for a, b in zip(values, values[1:], strict=False)]
+    expected = np.std(windows, ddof=1) * math.sqrt(252 / 2)
+    assert overlapping_volatility(pd.Series(values), 2, 252) == pytest.approx(expected, rel=1e-12)
+    assert overlapping_volatility(pd.Series(values), 1, 252) == pytest.approx(
+        np.std(values, ddof=1) * math.sqrt(252), rel=1e-12
+    )
+
+
+def test_uncorrelated_returns_keep_the_square_root_rule() -> None:
+    rng = np.random.default_rng(12)
+    series = pd.Series(rng.normal(0, 0.01, 50000))
+    scaled = annualised_volatility(series, 252)
+    assert overlapping_volatility(series, 21, 252) / scaled == pytest.approx(1.0, abs=0.03)
+    assert implied_volatility_ratio(series, 21) == pytest.approx(1.0, abs=0.03)
+
+
+def test_the_implied_ratio_matches_overlapping_windows_for_mean_reverting_returns() -> None:
+    rng = np.random.default_rng(13)
+    noise = rng.normal(0, 0.01, 50000)
+    values = noise.copy()
+    values[1:] -= 0.2 * noise[:-1]  # an MA(1): lag-one autocorrelation about -0.19
+    series = pd.Series(values)
+    ratio = overlapping_volatility(series, 21, 252) / annualised_volatility(series, 252)
+    assert implied_volatility_ratio(series, 21) == pytest.approx(ratio, abs=0.02)
+    assert ratio < 0.92
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, True])
+def test_lags_and_horizons_must_be_whole_numbers_of_at_least_one(bad) -> None:
+    series = pd.Series([0.01, -0.01, 0.02, 0.0, 0.01])
+    with pytest.raises(ValueError, match="lag must be a whole number"):
+        autocorrelation(series, bad)
+    with pytest.raises(ValueError, match="horizon must be a whole number"):
+        overlapping_volatility(series, bad, 252)
+    with pytest.raises(ValueError, match="horizon must be a whole number"):
+        implied_volatility_ratio(series, bad)
+
+
+def test_the_autocorrelation_helpers_refuse_unusable_input() -> None:
+    with pytest.raises(ValueError, match="never vary"):
+        autocorrelation(pd.Series([0.01] * 10))
+    with pytest.raises(ValueError, match="at least 4 returns, got 3"):
+        autocorrelation(pd.Series([0.01, 0.02, 0.0]), 2)
+    with pytest.raises(ValueError, match="at least 22 returns"):
+        overlapping_volatility(pd.Series([0.01, -0.01] * 10), 21, 252)
+    with pytest.raises(TypeError, match="expected a pandas Series, not DataFrame"):
+        autocorrelation(pd.DataFrame({"A": [0.01, 0.0, 0.02]}))
+    with pytest.raises(ValueError, match="periods_per_year"):
+        overlapping_volatility(pd.Series([0.01, -0.01] * 20), 21, 0)

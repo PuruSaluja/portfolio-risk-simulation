@@ -30,6 +30,14 @@ months):
 
 ``observed_periods_per_year`` counts how many periods the data really holds per
 year, to check the 252 convention against the calendar.
+
+Scaling by the square root of time assumes returns are uncorrelated from one period to
+the next. Three helpers measure how far that holds: ``autocorrelation`` at a lag;
+``overlapping_volatility``, the volatility of returns compounded over every window of
+``horizon`` periods (every starting day, not only calendar months), on a yearly scale;
+and ``implied_volatility_ratio``, what the autocorrelations at lags 1 to ``horizon - 1``
+imply that volatility is as a share of the square-root-scaled one,
+``sqrt(1 + 2 * sum((1 - k / horizon) * rho[k]))``.
 """
 
 from __future__ import annotations
@@ -148,3 +156,50 @@ def observed_periods_per_year(index: pd.Index) -> float:
         raise ValueError("dates must be increasing and unique")
     years = (index[-1] - index[0]).days / 365.25
     return (len(index) - 1) / years
+
+
+def _series(returns: pd.Series, minimum: int) -> np.ndarray:
+    if not isinstance(returns, pd.Series):
+        raise TypeError(f"expected a pandas Series, not {type(returns).__name__}")
+    _check(returns, minimum=minimum)
+    return returns.to_numpy(dtype="float64")
+
+
+def _check_horizon(horizon: int, name: str) -> None:
+    if isinstance(horizon, bool) or not isinstance(horizon, int) or horizon < 1:
+        raise ValueError(f"{name} must be a whole number of at least 1, not {horizon!r}")
+
+
+def autocorrelation(returns: pd.Series, lag: int = 1) -> float:
+    """The sample autocorrelation at ``lag``: deviations from the mean, over the variance."""
+    _check_horizon(lag, "lag")
+    values = _series(returns, minimum=lag + 2)
+    # Tested on the values themselves: the mean of equal values can differ from them in
+    # the last bit, leaving a variance of rounding error rather than zero.
+    if np.ptp(values) == 0.0:
+        raise ValueError("returns that never vary have no autocorrelation")
+    deviations = values - values.mean()
+    variance = np.dot(deviations, deviations)
+    return float(np.dot(deviations[:-lag], deviations[lag:]) / variance)
+
+
+def overlapping_volatility(returns: pd.Series, horizon: int, periods_per_year: float) -> float:
+    """Volatility of returns compounded over every ``horizon`` consecutive periods, a year."""
+    _check_horizon(horizon, "horizon")
+    _check_periods(periods_per_year)
+    values = _series(returns, minimum=horizon + 1)
+    logs = np.concatenate([[0.0], np.cumsum(np.log1p(values))])
+    windows = np.expm1(logs[horizon:] - logs[:-horizon])
+    return float(np.std(windows, ddof=1) * math.sqrt(periods_per_year / horizon))
+
+
+def implied_volatility_ratio(returns: pd.Series, horizon: int) -> float:
+    """The ``horizon``-period volatility the autocorrelations imply, over the scaled one."""
+    _check_horizon(horizon, "horizon")
+    _series(returns, minimum=horizon + 1)
+    ratio = 1.0 + 2.0 * sum(
+        (1.0 - k / horizon) * autocorrelation(returns, k) for k in range(1, horizon)
+    )
+    if ratio < 0.0:
+        raise ValueError("the autocorrelations imply a negative variance")
+    return math.sqrt(ratio)
