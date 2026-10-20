@@ -13,6 +13,9 @@
       "mean_return": 0.12122238087142244,
       "volatility_daily": 0.1888191110512178,
       "volatility_monthly": 0.1479232996695418,
+      "volatility_21day_overlapping": 0.15820603947,
+      "autocorrelation_lag1": -0.10375591260507815,
+      "volatility_ratio_implied_21day": 0.8345595355402127,
       "volatility_ewma_latest": 0.10328321377702986
     },
     "IWM": {
@@ -21,6 +24,9 @@
       "mean_return": 0.10985915478950843,
       "volatility_daily": 0.23974937256800197,
       "volatility_monthly": 0.19821538796938074,
+      "volatility_21day_overlapping": 0.21301655032713207,
+      "autocorrelation_lag1": -0.07251123819424879,
+      "volatility_ratio_implied_21day": 0.8976141571882195,
       "volatility_ewma_latest": 0.12276487791246846
     },
     "EFA": {
@@ -29,6 +35,9 @@
       "mean_return": 0.08160613031942121,
       "volatility_daily": 0.209589692220672,
       "volatility_monthly": 0.1669164386787604,
+      "volatility_21day_overlapping": 0.17840552591422448,
+      "autocorrelation_lag1": -0.1110898576835896,
+      "volatility_ratio_implied_21day": 0.8500120569060252,
       "volatility_ewma_latest": 0.12582608449268778
     },
     "EEM": {
@@ -37,6 +46,9 @@
       "mean_return": 0.10840629346056409,
       "volatility_daily": 0.2762416076359779,
       "volatility_monthly": 0.20902838196243287,
+      "volatility_21day_overlapping": 0.22193787954846128,
+      "autocorrelation_lag1": -0.12041076151502018,
+      "volatility_ratio_implied_21day": 0.7943307121852761,
       "volatility_ewma_latest": 0.21539229388849662
     },
     "AGG": {
@@ -45,6 +57,9 @@
       "mean_return": 0.029604872643827003,
       "volatility_daily": 0.05204551231697963,
       "volatility_monthly": 0.04492002122400073,
+      "volatility_21day_overlapping": 0.04582507533970431,
+      "autocorrelation_lag1": -0.049710863496011934,
+      "volatility_ratio_implied_21day": 0.8784178214462022,
       "volatility_ewma_latest": 0.0527266929869559
     },
     "TLT": {
@@ -53,6 +68,9 @@
       "mean_return": 0.03710227970165678,
       "volatility_daily": 0.14534149586306636,
       "volatility_monthly": 0.13617989281223158,
+      "volatility_21day_overlapping": 0.13520593086018834,
+      "autocorrelation_lag1": -0.02857749257091906,
+      "volatility_ratio_implied_21day": 0.9237683561762617,
       "volatility_ewma_latest": 0.11280077395030243
     },
     "GLD": {
@@ -61,6 +79,9 @@
       "mean_return": 0.11726500112542376,
       "volatility_daily": 0.18288631785091744,
       "volatility_monthly": 0.17298990608899237,
+      "volatility_21day_overlapping": 0.17415800927949993,
+      "autocorrelation_lag1": -0.01607428424569057,
+      "volatility_ratio_implied_21day": 0.9450886582265027,
       "volatility_ewma_latest": 0.2510871579072466
     },
     "VNQ": {
@@ -69,6 +90,9 @@
       "mean_return": 0.10468183726137287,
       "volatility_daily": 0.2837862921146385,
       "volatility_monthly": 0.21500432003982986,
+      "volatility_21day_overlapping": 0.22755886075050158,
+      "autocorrelation_lag1": -0.15733817628901595,
+      "volatility_ratio_implied_21day": 0.8139843691241165,
       "volatility_ewma_latest": 0.11518412089312136
     }
   },
