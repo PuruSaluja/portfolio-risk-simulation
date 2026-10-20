@@ -331,6 +331,10 @@ def write_cache(
     fetched_at: datetime | None = None,
 ) -> dict[str, Any]:
     """Write ``prices`` to ``cache`` and its manifest beside it; return the manifest."""
+    # Whole numbers (a volume, say) are written as the floats they are read back as.
+    prices = prices.astype(
+        {c: "float64" for c in COLUMNS[2:] if pd.api.types.is_integer_dtype(prices.get(c))}
+    )
     tickers = tuple(dict.fromkeys(prices["ticker"]))
     validate_prices(prices, tickers, start, end)
     data = _csv_bytes(prices)
@@ -391,7 +395,8 @@ def load_cache(cache: Path = DEFAULT_CACHE) -> pd.DataFrame:
         end = date.fromisoformat(manifest["end"])
         prices = pd.read_csv(
             io.BytesIO(data),
-            dtype={column: "float64" for column in COLUMNS[2:]},
+            # Read as text, or a ticker of digits alone would come back as a number.
+            dtype={"date": str, "ticker": str} | {column: "float64" for column in COLUMNS[2:]},
             keep_default_na=False,
         )
     except (ValueError, TypeError) as exc:

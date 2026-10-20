@@ -310,6 +310,27 @@ def test_the_cache_reads_back_exactly(tmp_path: Path) -> None:
     pd.testing.assert_frame_equal(back, prices)
 
 
+def test_a_ticker_of_digits_alone_reads_back_as_text(tmp_path: Path) -> None:
+    prices = fetch(yahoo_frame(("0700", "1299")), ("0700", "1299"))
+    back = load_cache(write(tmp_path, prices))
+    assert list(dict.fromkeys(back["ticker"])) == ["0700", "1299"]
+    pd.testing.assert_frame_equal(back, prices)
+
+
+def test_whole_number_columns_are_written_as_floats(tmp_path: Path) -> None:
+    prices = fetch(yahoo_frame())
+    as_ints = prices.astype({"volume": "int64", "split": "int64"})
+    back = load_cache(write(tmp_path, as_ints))
+    pd.testing.assert_frame_equal(back, prices)
+
+
+def test_a_true_or_false_column_is_still_refused(tmp_path: Path) -> None:
+    prices = fetch(yahoo_frame())
+    prices["split"] = False
+    with pytest.raises(DataError, match="split is False, not a number"):
+        write(tmp_path, prices)
+
+
 def test_the_manifest_records_the_window_rows_and_checksum(tmp_path: Path) -> None:
     frame = yahoo_frame()
     frame.loc["2024-01-08", ("Dividends", "BBB")] = 0.25
