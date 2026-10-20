@@ -1,0 +1,61 @@
+# Lint and the test suite on a clean install, so a pass shows pyproject.toml
+# declares everything the code needs. The tests never reach Yahoo: the download
+# is stood in for, so CI needs no network beyond the install.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # A named image, not ubuntu-latest, so the runner changes only when this line does.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest version pyproject.toml allows, and the one used locally, each with
+        # the newest dependencies; and the local versions from constraints.txt.
+        python-version: ["3.11", "3.14"]
+        versions: [newest]
+        include:
+          - python-version: "3.14"
+            versions: pinned
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+
+      - name: Install
+        run: |
+          if [ "${{ matrix.versions }}" = pinned ]; then
+            python -m pip install -c constraints.txt -e ".[dev]"
+          else
+            python -m pip install -e ".[dev]"
+          fi
+          python -m pip freeze --exclude-editable
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test
+        run: pytest -W default
