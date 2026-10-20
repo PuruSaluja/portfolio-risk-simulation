@@ -1,9 +1,10 @@
 """Market data: daily prices from Yahoo Finance, cached to CSV beside a manifest.
 
 ``fetch_prices`` downloads daily closes, dividends and splits for a list of tickers with
-yfinance and checks them: every ticker must have prices, from within a week of the
-window's start (so no fund joins part way through the history), with positive, finite
-closes and non-negative dividends. ``write_cache`` writes them to a CSV file and a
+yfinance and checks them: every ticker must have prices from within a week of the
+window's start to within a week of the others' last price, with no gap longer than a
+week (so no fund joins, leaves or drops out part way through the history), with
+positive, finite closes and non-negative dividends. ``write_cache`` writes them to a CSV file and a
 manifest beside it (``prices.csv`` and ``prices.manifest.json``): the window, each
 ticker's rows, first and last dates and dividend count, and the file's SHA-256.
 ``load_cache`` reads the file back and refuses it unless it matches its manifest, so
@@ -72,7 +73,9 @@ DEFAULT_END = date(2026, 9, 30)
 DEFAULT_CACHE = Path("data") / "prices.csv"
 
 # A ticker whose first price comes later than this after the window's start joined
-# part way through; a week covers the holidays at the start of a year.
+# part way through; a week covers the holidays at the start of a year. The same
+# allowance applies to a ticker's last price against the others', and to the gap
+# between two of its prices (US markets have not closed for longer since 2001).
 MAX_START_DELAY = timedelta(days=7)
 
 COLUMNS: tuple[str, ...] = (
@@ -245,6 +248,22 @@ def validate_prices(prices: pd.DataFrame, tickers: Sequence[str], start: date, e
                 f"{ticker}: the first price is on {days[0]}, more than "
                 f"{MAX_START_DELAY.days} days after the window starts ({start}), so it would "
                 "join part way through; start the window later or leave it out"
+            )
+        gaps = [(a, b) for a, b in zip(days, days[1:], strict=False) if b - a > MAX_START_DELAY]
+        if gaps:
+            a, b = gaps[0]
+            raise DataError(
+                f"{ticker}: no prices between {a} and {b}, more than {MAX_START_DELAY.days} "
+                "days; returns over the gap would be dropped for every fund"
+            )
+    latest = max(prices["date"])
+    for ticker, group in prices.groupby("ticker", sort=False):
+        last = group["date"].iloc[-1]
+        if latest - last > MAX_START_DELAY:
+            raise DataError(
+                f"{ticker}: the last price is on {last}, more than {MAX_START_DELAY.days} days "
+                f"before the others' ({latest}), so it would leave part way through; end the "
+                "window earlier or leave it out"
             )
 
 

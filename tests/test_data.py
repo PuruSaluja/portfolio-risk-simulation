@@ -216,6 +216,38 @@ def test_a_ticker_that_starts_within_a_week_is_accepted() -> None:
     assert prices[prices["ticker"] == "BBB"]["date"].iloc[0] == date(2024, 1, 8)
 
 
+def test_a_ticker_that_stops_more_than_a_week_before_the_others_is_refused() -> None:
+    days = pd.bdate_range("2024-01-02", "2024-01-31")
+    frame = yahoo_frame(days=days)
+    frame.loc["2024-01-19":, ("Close", "BBB")] = np.nan  # last price 18 January
+    with pytest.raises(DataError, match=r"BBB: the last price is on 2024-01-18, more than 7 days"):
+        fetch(frame, end=date(2024, 1, 31))
+
+
+def test_a_ticker_that_stops_within_a_week_of_the_others_is_accepted() -> None:
+    days = pd.bdate_range("2024-01-02", "2024-01-31")
+    frame = yahoo_frame(days=days)
+    frame.loc["2024-01-25":, ("Close", "BBB")] = np.nan  # last price 24 January, 7 days before
+    prices = fetch(frame, end=date(2024, 1, 31))
+    assert prices[prices["ticker"] == "BBB"]["date"].iloc[-1] == date(2024, 1, 24)
+
+
+def test_a_gap_of_more_than_a_week_is_refused() -> None:
+    days = pd.bdate_range("2024-01-02", "2024-01-31")
+    frame = yahoo_frame(days=days)
+    frame.loc["2024-01-09":"2024-01-16", ("Close", "AAA")] = np.nan
+    with pytest.raises(DataError, match="AAA: no prices between 2024-01-08 and 2024-01-17"):
+        fetch(frame, end=date(2024, 1, 31))
+
+
+def test_a_gap_of_a_week_is_accepted() -> None:
+    days = pd.bdate_range("2024-01-02", "2024-01-31")
+    frame = yahoo_frame(days=days)
+    frame.loc["2024-01-09":"2024-01-12", ("Close", "AAA")] = np.nan  # 8 to 15 January
+    prices = fetch(frame, end=date(2024, 1, 31))
+    assert (prices["ticker"] == "AAA").sum() == len(days) - 4
+
+
 def test_prices_outside_the_window_are_refused() -> None:
     days = pd.bdate_range("2024-01-02", "2024-01-15")
     with pytest.raises(DataError, match="outside 2024-01-01 to 2024-01-12"):
