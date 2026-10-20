@@ -25,12 +25,15 @@ jobs:
       fail-fast: false
       matrix:
         # The oldest version pyproject.toml allows, and the one used locally, each with
-        # the newest dependencies; and the local versions from constraints.txt.
+        # the newest dependencies; the local versions from constraints.txt; and the
+        # oldest versions pyproject.toml allows.
         python-version: ["3.11", "3.14"]
         versions: [newest]
         include:
           - python-version: "3.14"
             versions: pinned
+          - python-version: "3.11"
+            versions: lowest
 
     steps:
       - uses: actions/checkout@v7
@@ -47,6 +50,9 @@ jobs:
         run: |
           if [ "${{ matrix.versions }}" = pinned ]; then
             python -m pip install -c constraints.txt -e ".[dev]"
+          elif [ "${{ matrix.versions }}" = lowest ]; then
+            # pyproject.toml's lower bounds; test_package checks the two agree.
+            python -m pip install "numpy==2.0.2" "pandas==2.2.2" "yfinance==0.2.58" -e ".[dev]"
           else
             python -m pip install -e ".[dev]"
           fi

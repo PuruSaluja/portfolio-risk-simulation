@@ -52,3 +52,15 @@ def test_constraints_pin_every_declared_dependency() -> None:
     for requirement in declared:
         name = re.split(r"[\[<>=!~ ;]", requirement, maxsplit=1)[0].lower()
         assert name in pins, f"constraints.txt does not pin {name}"
+
+
+def test_ci_s_lowest_job_installs_pyproject_s_lower_bounds() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    bounds = {}
+    for requirement in pyproject["project"]["dependencies"]:
+        name, _, version = requirement.partition(">=")
+        bounds[name] = version
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    lowest = [line for line in workflow.splitlines() if "pip install" in line and "==" in line]
+    assert len(lowest) == 1
+    assert dict(re.findall(r'"([a-z]+)==([0-9.]+)"', lowest[0])) == bounds
