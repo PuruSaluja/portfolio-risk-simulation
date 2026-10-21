@@ -185,6 +185,9 @@ Three models, each answering for an assumption the one before makes:
 Runs are reproducible: the seed fixes every path, every model draws from the
 same seed, and path `i` is the same whatever number of paths is asked for (they
 are drawn in blocks of 1,000, each from its own stream spawned from the seed).
+The normal and t models factor the covariance by Cholesky, which is unique, so the
+paths do not depend on the linear-algebra library numpy was built with: numpy
+2.4.6 from Anaconda and 2.5.4 from PyPI give figures within 2e-14 of each other.
 
 ```bash
 python -m portfolio_risk.montecarlo --weights equal --horizon 252 --paths 10000 --seed 0 \
@@ -201,21 +204,22 @@ The eight funds in equal weights, 10,000 one-year (252-day) paths, seed 0
 ([`results/montecarlo.json`](results/montecarlo.json)), against the same
 portfolio's history, 4 January 2005 to 30 September 2026. The t fit has 4.12
 degrees of freedom (likelihood ratio against the normal 12,375, for one extra
-parameter). Politis and White's lengths run from 1.0 day (GLD, whose
-autocorrelations are all insignificant) to 13.3 (AGG), 7.9 on average.
+parameter). Politis and White's lengths run from 1.0 day (GLD, none of whose
+first 100 autocorrelations clears the method's significance threshold) to 13.3
+(AGG), 7.9 on average.
 
 | Daily return | Sd | Excess kurtosis | 0.1% quantile | 1% quantile | 99% quantile |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | History | 0.871% | 12.92 | -5.07% | -2.41% | 2.35% |
-| Normal | 0.874% | 0.01 | -2.61% | -1.97% | 2.09% |
-| Student-t | 0.874% | 15.07 | -4.15% | -2.24% | 2.39% |
+| Normal | 0.872% | 0.01 | -2.61% | -1.97% | 2.09% |
+| Student-t | 0.872% | 15.96 | -4.16% | -2.22% | 2.39% |
 | Bootstrap, mean block 7.9 days | 0.872% | 12.86 | -5.10% | -2.43% | 2.36% |
 
 | 252-day return | Mean | Sd | 0.1% quantile | 1% quantile | 5% quantile | Median | Chance of a loss |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | History | 9.07% | 11.92% | -31.82% | -25.49% | -14.62% | 9.65% | 16.1% |
-| Normal | 9.19% | 15.15% | -28.34% | -21.15% | -13.93% | 8.26% | 28.8% |
-| Student-t | 9.18% | 15.13% | -29.71% | -21.62% | -13.67% | 8.18% | 28.8% |
+| Normal | 9.46% | 15.05% | -30.31% | -21.83% | -13.40% | 8.62% | 27.6% |
+| Student-t | 9.57% | 15.18% | -31.46% | -21.52% | -13.50% | 8.57% | 27.2% |
 | Bootstrap, mean block 7.9 days | 9.20% | 13.53% | -32.60% | -21.21% | -12.47% | 8.83% | 24.7% |
 | Bootstrap, 1 day | 8.89% | 14.83% | -30.46% | -21.06% | -13.51% | 7.93% | 28.3% |
 | Bootstrap, 21 days | 9.07% | 12.90% | -31.90% | -22.07% | -12.06% | 8.99% | 22.5% |
@@ -230,44 +234,52 @@ What the comparison shows:
 
 - **Assuming normality makes the daily tails far too thin.** The normal matches
   the mean and the standard deviation, but history's worst day in a thousand is
-  a 5.07% loss and the normal's 2.61%. The t gets most of the way (4.15%), and
+  a 5.07% loss and the normal's 2.61%. The t gets most of the way (4.16%), and
   the bootstrap, drawing real days, all of it (5.10%). The t's excess kurtosis
-  is unstable, 11.0 to 20.1 over seeds 0 to 5, because at 4.12 degrees of
+  is unstable, 11.6 to 22.4 over seeds 0 to 5, because at 4.12 degrees of
   freedom a t's fourth moment barely exists (its excess kurtosis is
   6 / (dof - 4) = 52).
 - **Fat tails alone do not change the yearly picture.** Drawn independently, 252
   t days add up to nearly the same one-year distribution as 252 normal days
-  (standard deviation 15.1% against 15.2%, chance of a loss 28.8% for both), and
-  so do 252 independently drawn real days (the 1-day bootstrap, 14.8%).
+  (standard deviation 15.2% against 15.1%, chance of a loss 27.2% against
+  27.6%), and so do 252 independently drawn real days (the 1-day bootstrap, 14.8%
+  and 28.3%).
 - **What the yearly picture needs is the dependence between days.** The
   portfolio's daily returns are negatively autocorrelated (lag one -0.097, like
   each fund's above), so part of each move reverses: measured over 252-day
   windows, history's volatility is 0.862 of the square-root-scaled daily
   figure. Any model that draws days independently overstates one-year risk: the
-  normal's standard deviation is 15.2% against history's 11.9%, and it puts a
-  loss in 28.8% of years against 16.1% of windows (4 of 21 full calendar years).
+  normal's standard deviation is 15.1% against history's 11.9%, and it puts a
+  loss in 27.6% of years against 16.1% of windows (4 of 21 full calendar years).
   Blocks keep that dependence: the standard deviation falls from 14.8% with
   1-day blocks to 13.5% at the Politis-White length, 12.9% at 21 days and 12.1%
   at 252. Politis and White choose blocks for the variance of a sample mean, and
   7.9 days keeps the short-lag reversals but not the longer ones.
 - **Long blocks agree with history partly because they are history.** With a
   mean block of 252 days a one-year path is often a single stretch of the data,
-  so the bootstrap's 1% quantile (-25.2%) and chance of a loss (17.3%) land near
-  the historical windows' (-25.5%, 16.1%) largely by replaying them; with only
+  so the bootstrap's 1% quantile (-25.2%; -23.9% to -25.6% over seeds 0 to 5)
+  and chance of a loss (17.3%) land near the historical windows' (-25.5%, 16.1%)
+  largely by replaying them; with only
   about 21 independent years, it cannot show a year the data does not hold.
-- The means agree: the normal's 9.19% against 9.28% expected from the fitted
-  moments (`(mean of exp(mu + var / 2)) ^ 252 - 1`), 0.6 standard errors apart,
+- The means agree: the normal's 9.46% against 9.28% expected from the fitted
+  moments (`(mean of exp(mu + var / 2)) ^ 252 - 1`), 1.2 standard errors apart,
   and 9.07% over the historical windows. The 1-day bootstrap's 8.89% is 2.6
   standard errors below its exact expectation, `(1 + mean daily return) ^ 252 -
   1` = 9.28%, at seed 0; over seeds 0 to 9 the gap averages -0.11 standard
   errors.
 
-Over seeds 0 to 5 every one-year figure above moves by less than the gaps
-between models. The standard deviations run 15.0% to 15.4% (normal), 15.0% to
-15.3% (t), 13.4% to 13.7% (Politis-White bootstrap) and 11.8% to 12.1%
-(252-day blocks); the chances of a loss 27.6% to 28.8%, 27.5% to 28.9%, 24.2%
-to 25.7% and 17.3% to 17.8%. The daily 0.1% quantiles: normal -2.61% to
--2.62%, t -4.14% to -4.21%, bootstrap -5.10% throughout.
+Over seeds 0 to 5 the standard deviations and chances of a loss move by less
+than the gaps the bullets above rest on. The standard deviations run 15.1% to
+15.2% (normal), 15.0% to 15.3% (t), 14.8% to 15.3% (1-day blocks), 13.4% to
+13.7% (Politis-White), 12.6% to 12.9% (21 days), 12.2% to 12.4% (63) and 11.8%
+to 12.1% (252); the chances of a loss 27.6% to 28.7%, 27.2% to 29.3%, 27.5% to
+28.4%, 24.2% to 25.7%, 22.5% to 23.6%, 20.1% to 20.8% and 17.3% to 17.8%. The
+daily 0.1% quantiles: normal -2.61% to -2.62%, t -4.15% to -4.21%, bootstrap
+-5.10% throughout. The one-year tail quantiles are noisier: the 0.1% quantile
+rests on 10 of the 10,000 paths and moves by up to 6 points between seeds (63-day
+blocks, -32.1% to -38.1%), and the 1% quantiles of the normal, the t and the
+Politis-White bootstrap overlap (-21.2% to -22.5%), so the tables do not rank
+those models by them.
 
 ## Parts
 
