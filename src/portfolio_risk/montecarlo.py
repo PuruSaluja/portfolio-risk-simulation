@@ -146,16 +146,31 @@ DOF_RANGE = (2.01, 1000.0)
 
 
 def _mahalanobis(logs: np.ndarray, mean: np.ndarray, covariance: np.ndarray):
-    """Squared distances from the mean in units of the covariance, and its log determinant."""
-    try:
-        lower = np.linalg.cholesky(covariance)
-    except np.linalg.LinAlgError:
+    """Squared distances from the mean in units of the covariance, its log determinant,
+    and the number of dimensions the returns span.
+
+    A singular covariance (a fund that never varies, or one that is a mix of others)
+    confines the returns to fewer dimensions than funds; distances and determinant are
+    then those within the space its eigenvectors with positive eigenvalues span. The
+    rank comes from the eigenvalues: Cholesky completes on a matrix singular but for
+    rounding, and its tiny last pivot would swamp the likelihood.
+    """
+    eigenvalues, vectors = np.linalg.eigh(covariance)
+    largest = max(float(eigenvalues[-1]), 0.0)
+    if eigenvalues[0] < -1e-12 * largest:
         raise ValueError(
-            "the covariance matrix is singular (a fund that never varies, or one that is a "
-            "mix of others), so the likelihood is undefined"
-        ) from None
+            f"the covariance matrix is not positive semi-definite (eigenvalue {eigenvalues[0]:.3g})"
+        )
+    kept = eigenvalues > 1e-12 * largest
+    if not kept.any():
+        raise ValueError("no fund's returns vary, so there is no likelihood")
+    if not kept.all():
+        scaled = (vectors[:, kept].T @ (logs - mean).T) / np.sqrt(eigenvalues[kept])[:, None]
+        log_det = float(np.sum(np.log(eigenvalues[kept])))
+        return np.sum(scaled**2, axis=0), log_det, int(kept.sum())
+    lower = np.linalg.cholesky(covariance)
     scaled = np.linalg.solve(lower, (logs - mean).T)
-    return np.sum(scaled**2, axis=0), 2.0 * float(np.sum(np.log(np.diag(lower))))
+    return np.sum(scaled**2, axis=0), 2.0 * float(np.sum(np.log(np.diag(lower)))), len(mean)
 
 
 def log_likelihood(
@@ -164,7 +179,8 @@ def log_likelihood(
     """Log-likelihood of daily log returns under a multivariate t with this covariance.
 
     The t's scale matrix is ``covariance * (dof - 2) / dof``, so its covariance is
-    ``covariance`` whatever ``dof`` is; an infinite ``dof`` gives the normal.
+    ``covariance`` whatever ``dof`` is; an infinite ``dof`` gives the normal. With a
+    singular covariance the density is the one within the space the returns span.
     """
     logs = np.asarray(logs, dtype="float64")
     mean = np.asarray(mean, dtype="float64")
@@ -178,7 +194,7 @@ def log_likelihood(
     if not isinstance(dof, int | float) or isinstance(dof, bool) or not dof > 2:
         raise ValueError(f"dof must be above 2 (infinite for the normal), not {dof!r}")
     n = len(logs)
-    distances, log_det = _mahalanobis(logs, mean, covariance)
+    distances, log_det, p = _mahalanobis(logs, mean, covariance)
     if math.isinf(dof):
         return float(-0.5 * (n * (p * math.log(2 * math.pi) + log_det) + distances.sum()))
     # With the scale matrix above, the density's constant and its distances both take

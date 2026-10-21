@@ -329,10 +329,46 @@ def test_the_normal_log_likelihood_is_the_sum_of_normal_densities() -> None:
     assert log_likelihood(logs, mean, cov, 1e8) == pytest.approx(expected, rel=1e-6)
 
 
-def test_the_likelihood_refuses_a_singular_covariance() -> None:
-    cov = np.array([[1e-4, 2e-4, 0.0], [2e-4, 4e-4, 0.0], [0.0, 0.0, 1e-4]])
-    with pytest.raises(ValueError, match="singular"):
-        log_likelihood(np.zeros((4, 3)), np.zeros(3), cov, 5.0)
+def test_a_fund_that_never_varies_leaves_the_likelihood_of_the_others() -> None:
+    logs = np.log1p(daily_returns(n=200).to_numpy())
+    with_flat = np.column_stack([logs, np.full(len(logs), 0.0003)])
+    mean, cov = with_flat.mean(axis=0), np.cov(with_flat.T)
+    cov[3, :] = cov[:, 3] = 0.0  # as sample_covariance gives it
+    for dof in (5.0, math.inf):
+        assert log_likelihood(with_flat, mean, cov, dof) == pytest.approx(
+            log_likelihood(logs, mean[:3], cov[:3, :3], dof), rel=1e-10
+        )
+
+
+def test_a_fund_that_is_a_mix_of_others_has_the_density_on_their_plane() -> None:
+    # C = A + B: the returns lie on a plane, and mapping (a, b) to (a, b, a + b)
+    # stretches area by sqrt(det(J'J)) = sqrt(3), so each day's density on the plane
+    # is the (A, B) density over sqrt(3).
+    ab = np.log1p(daily_returns(n=200).to_numpy())[:, :2]
+    abc = np.column_stack([ab, ab.sum(axis=1)])
+    jacobian = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    mean, cov = ab.mean(axis=0), np.cov(ab.T)
+    for dof in (5.0, math.inf):
+        expected = log_likelihood(ab, mean, cov, dof) - len(ab) / 2 * math.log(3)
+        got = log_likelihood(abc, jacobian @ mean, jacobian @ cov @ jacobian.T, dof)
+        assert got == pytest.approx(expected, rel=1e-9)
+
+
+def test_the_likelihood_needs_a_fund_that_varies_and_a_valid_covariance() -> None:
+    with pytest.raises(ValueError, match="no fund's returns vary"):
+        log_likelihood(np.zeros((4, 2)), np.zeros(2), np.zeros((2, 2)), 5.0)
+    with pytest.raises(ValueError, match="not positive semi-definite"):
+        log_likelihood(np.zeros((4, 2)), np.zeros(2), -np.eye(2), 5.0)
+
+
+def test_the_t_fits_beside_a_fund_that_never_varies() -> None:
+    draws = t_model(5.0).sample(np.random.default_rng(17), 1, 3_000)[0]
+    others = pd.DataFrame(draws, columns=list(TICKERS))
+    with_flat = others.assign(D=0.0003)
+    fitted = StudentTModel.fit(with_flat)
+    assert fitted.dof == pytest.approx(StudentTModel.fit(others).dof, rel=1e-6)
+    sample = fitted.sample(np.random.default_rng(0), 10, 20)
+    np.testing.assert_allclose(sample[..., 3], 0.0003, rtol=1e-12)
 
 
 def test_fit_recovers_the_degrees_of_freedom() -> None:
