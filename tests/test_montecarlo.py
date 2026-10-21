@@ -514,6 +514,11 @@ def ar1(phi: float, n: int, seed: int) -> np.ndarray:
     return x[1_000:]
 
 
+def ma1(theta: float, n: int, seed: int) -> np.ndarray:
+    noise = np.random.default_rng(seed).standard_normal(n + 1)
+    return noise[1:] + theta * noise[:-1]
+
+
 def test_the_block_length_matches_theory_for_an_ar1() -> None:
     # For an AR(1) with coefficient phi, G / g = 2 phi / (1 - phi^2), so the optimal
     # stationary-bootstrap length is (2 phi / (1 - phi^2)) ^ (2/3) * n ^ (1/3).
@@ -544,23 +549,24 @@ def test_insignificant_early_lags_do_not_end_the_search() -> None:
 
 
 def reference_block_length(x: np.ndarray) -> float:
-    """Politis and White's formula written out with two-sided sums, as in the paper."""
+    """Politis and White's formula written out with two-sided sums, as in the paper, with
+    the window found as the authors' reference code finds it."""
     n = len(x)
     d = x - x.mean()
 
     def r(k):
         return np.dot(d[: n - abs(k)], d[abs(k) :]) / n
 
+    def correlation(k):
+        # Over the n - k pairs of days k apart.
+        a, b = d[k:], d[: n - k]
+        return abs(np.dot(a, b)) / math.sqrt(np.dot(a, a) * np.dot(b, b))
+
     k_n = max(5, math.ceil(math.sqrt(math.log10(n))))
     m_max = math.ceil(math.sqrt(n)) + k_n
     c = 2 * math.sqrt(math.log10(n) / n)
-    m_hat = next(
-        (m for m in range(m_max + 1) if all(abs(r(m + j) / r(0)) < c for j in range(1, k_n + 1))),
-        m_max,
-    )
-    big_m = min(2 * m_hat, m_max)
-    if big_m == 0:
-        return 1.0
+    runs = [m for m in range(1, m_max - k_n + 1) if all(correlation(m + j) < c for j in range(k_n))]
+    big_m = min(2 * runs[0], m_max) if runs else m_max
 
     def flat_top(t):
         return 1.0 if abs(t) <= 0.5 else max(2 * (1 - abs(t)), 0.0)
@@ -572,16 +578,53 @@ def reference_block_length(x: np.ndarray) -> float:
     return min(max(b, 1.0), math.ceil(min(3 * math.sqrt(n), n / 3)))
 
 
-@pytest.mark.parametrize(("phi", "n", "seed"), [(0.4, 300, 50), (0.7, 500, 51), (-0.3, 400, 52)])
+@pytest.mark.parametrize(
+    ("phi", "n", "seed"), [(0.4, 300, 50), (0.7, 500, 51), (-0.3, 400, 52), (0.2, 600, 367)]
+)
 def test_the_block_length_follows_the_formula_on_short_series(phi, n, seed) -> None:
     # Short series leave the autocovariances past the significant lags noisy, so the
-    # flat-top weights on them change the answer.
+    # flat-top weights on them change the answer. In the last, a lag's correlation sits
+    # at the threshold: over its 600 - k pairs of days it is insignificant, while arch,
+    # whose sums leave out one more day, gives 4.43 instead of 3.02.
     x = ar1(phi, n, seed)
     assert optimal_block_length(x) == pytest.approx(reference_block_length(x), rel=1e-12)
 
 
-def test_uncorrelated_returns_need_no_blocks() -> None:
+@pytest.mark.parametrize(
+    ("series", "arch"),
+    [
+        (lambda: ar1(0.4, 300, 50), 6.113156783209369),
+        (lambda: ar1(0.7, 500, 51), 9.52973782380984),
+        (lambda: ar1(-0.3, 400, 52), 5.623061310476951),
+        (lambda: ar1(0.5, 100_000, 30), 53.76428052735119),
+        (lambda: np.random.default_rng(32).standard_normal(10_000), 2.6740603442066813),
+        # Nearly non-invertible MA(1): the long-run variance estimate comes out below
+        # zero, and the formula, which squares it, still gives a length under the cap.
+        (lambda: ma1(-0.97, 1_500, 90), 102.6111191523248),
+    ],
+)
+def test_the_block_length_matches_arch(series, arch) -> None:
+    # arch 8.0.0's optimal_block_length(x)["stationary"] on the same series.
+    assert optimal_block_length(series()) == pytest.approx(arch, rel=1e-12)
+
+
+def test_uncorrelated_returns_get_a_short_block() -> None:
+    # Lags 1 to 5 are insignificant, so the window is 2 lags, of which the flat top
+    # keeps lag 1 alone: g = R(0) + 2 R(1) and G = 2 R(1).
     noise = np.random.default_rng(32).standard_normal(10_000)
+    d = noise - noise.mean()
+    r0, r1 = np.dot(d, d) / 10_000, np.dot(d[1:], d[:-1]) / 10_000
+    expected = ((2 * r1) ** 2 / (r0 + 2 * r1) ** 2) ** (1 / 3) * 10_000 ** (1 / 3)
+    assert optimal_block_length(noise) == pytest.approx(max(expected, 1.0), rel=1e-12)
+    assert optimal_block_length(noise) < 3
+
+
+def test_a_block_length_below_one_day_is_one_day() -> None:
+    # Barely autocorrelated: the formula gives under a day.
+    noise = np.random.default_rng(37).standard_normal(400)
+    d = noise - noise.mean()
+    r0, r1 = np.dot(d, d) / 400, np.dot(d[1:], d[:-1]) / 400
+    assert ((2 * r1) ** 2 / (r0 + 2 * r1) ** 2) ** (1 / 3) * 400 ** (1 / 3) < 1
     assert optimal_block_length(noise) == 1.0
 
 

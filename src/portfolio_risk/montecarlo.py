@@ -281,8 +281,14 @@ def optimal_block_length(returns: pd.Series | np.ndarray) -> float:
     bootstrap"), with the correction of Patton, Politis and White (2009): the length
     that minimises the error of the bootstrap's variance of the sample mean,
     ``(G^2 / g^2) ^ (1/3) * n ^ (1/3)``, where ``g`` and ``G`` are the autocovariances
-    summed, and summed weighted by their lag, through a flat-top window up to twice
-    the last lag that is still significant. At least 1 day, at most
+    summed, and summed weighted by their lag, through a flat-top window of ``2 m``
+    lags. ``m`` is the first lag from which ``K_N`` autocorrelations in a row are
+    insignificant, as in the authors' reference code and the arch package (the window
+    is ``m_max`` lags if there is no such lag). Matches arch 8.0's
+    ``optimal_block_length``, except that the length is at least 1 day (a mean block
+    below 1 is not a block) and that a lag's correlation is taken over its ``n - k``
+    pairs of days, where arch's sums leave out one more day; that changes the answer
+    only when a correlation sits at the threshold (1 series in 300 compared). At most
     ``min(3 sqrt(n), n / 3)``.
     """
     values = np.asarray(returns, dtype="float64")
@@ -291,33 +297,38 @@ def optimal_block_length(returns: pd.Series | np.ndarray) -> float:
     n = len(values)
     k_n = max(5, math.ceil(math.sqrt(math.log10(max(n, 1)))))
     m_max = math.ceil(math.sqrt(n)) + k_n
-    if n <= m_max + k_n:
-        raise ValueError(f"needs more than {m_max + k_n} returns, got {n}")
+    if n <= m_max + 1:
+        raise ValueError(f"needs more than {m_max + 1} returns, got {n}")
     if not np.isfinite(values).all():
         raise ValueError("returns include NaN or infinite values")
     if np.ptp(values) == 0.0:
         raise ValueError("returns that never vary have no block length")
     deviations = values - values.mean()
-    lags = m_max + k_n
-    autocovariance = np.array(
-        [np.dot(deviations[: n - k], deviations[k:]) / n for k in range(lags + 1)]
+    products = [np.dot(deviations[k:], deviations[: n - k]) for k in range(m_max + 1)]
+    autocovariance = np.array(products) / n
+    # Each lag's correlation over the days it pairs, for the significance test.
+    correlation = np.array(
+        [
+            abs(products[k])
+            / math.sqrt(
+                np.dot(deviations[k:], deviations[k:])
+                * np.dot(deviations[: n - k], deviations[: n - k])
+            )
+            for k in range(m_max + 1)
+        ]
     )
-    rho = autocovariance / autocovariance[0]
-    # The smallest m after which k_n autocorrelations in a row are insignificant.
-    threshold = 2.0 * math.sqrt(math.log10(n) / n)
-    insignificant = np.abs(rho) < threshold
-    m_hat = next((m for m in range(m_max + 1) if insignificant[m + 1 : m + k_n + 1].all()), m_max)
-    window = min(2 * m_hat, m_max)
-    b_max = math.ceil(min(3 * math.sqrt(n), n / 3))
-    if window == 0:
-        return 1.0
+    insignificant = correlation < 2.0 * math.sqrt(math.log10(n) / n)
+    # Lag 0's correlation is 1, so the first run of insignificant lags starts at 1 or later.
+    m_hat = next((m for m in range(1, m_max - k_n + 1) if insignificant[m : m + k_n].all()), None)
+    window = m_max if m_hat is None else min(2 * m_hat, m_max)
     k = np.arange(1, window + 1)
     flat_top = np.where(k / window <= 0.5, 1.0, 2.0 * (1.0 - k / window))
     g = autocovariance[0] + 2.0 * np.sum(flat_top * autocovariance[1 : window + 1])
     big_g = 2.0 * np.sum(flat_top * k * autocovariance[1 : window + 1])
-    # A long-run variance of zero (or below, from strongly negative autocorrelations)
-    # would need blocks without end; the cap stands in.
-    if g <= 0.0:
+    b_max = math.ceil(min(3 * math.sqrt(n), n / 3))
+    # A long-run variance estimate of zero would need blocks without end. One below zero
+    # (the flat-top window allows it) enters squared, as in the reference code.
+    if g == 0.0:
         return float(b_max)
     length = (big_g**2 / g**2) ** (1 / 3) * n ** (1 / 3)
     return float(min(max(length, 1.0), b_max))
