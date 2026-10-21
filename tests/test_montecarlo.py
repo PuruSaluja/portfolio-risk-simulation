@@ -13,6 +13,7 @@ from portfolio_risk.montecarlo import (
     BootstrapModel,
     NormalModel,
     StudentTModel,
+    _factor,
     check_weights,
     describe,
     fit_dof,
@@ -582,6 +583,47 @@ def test_fit_model_reads_each_spec() -> None:
     ]:
         with pytest.raises(ValueError, match=message):
             fit_model(spec, returns)
+
+
+def test_a_positive_definite_covariance_is_factored_by_cholesky() -> None:
+    # Unique, unlike an eigendecomposition, whose eigenvector signs vary by library.
+    factor = _factor(COVARIANCE)
+    np.testing.assert_array_equal(factor, np.linalg.cholesky(COVARIANCE))
+    assert (np.triu(factor, 1) == 0).all() and (np.diag(factor) > 0).all()
+
+
+def test_a_singular_covariance_s_factor_has_fixed_signs(monkeypatch) -> None:
+    cov = np.array([[1e-4, 2e-4, 0.0], [2e-4, 4e-4, 0.0], [0.0, 0.0, 0.0]])
+    factor = _factor(cov)
+    np.testing.assert_allclose(factor @ factor.T, cov, atol=1e-18)
+    # Another library may return any eigenvector negated; the factor must not change.
+    eigh = np.linalg.eigh
+    for flips in ([-1, 1, 1], [1, -1, -1], [-1, -1, -1]):
+        monkeypatch.setattr(
+            np.linalg, "eigh", lambda m, f=flips: (eigh(m)[0], eigh(m)[1] * np.array(f))
+        )
+        np.testing.assert_array_equal(_factor(cov), factor)
+    monkeypatch.undo()
+
+
+def test_the_first_draws_are_pinned() -> None:
+    # The same on every platform: the random stream and the Cholesky factor are.
+    np.testing.assert_allclose(
+        model().sample(np.random.default_rng(0), 1, 2)[0],
+        [
+            [0.00165867629522925, -0.00025830472029947, 0.00922412711591002],
+            [0.00145005148096655, -0.00256448656631723, 0.00482643358002637],
+        ],
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(
+        t_model().sample(np.random.default_rng(0), 1, 2)[0],
+        [
+            [1.030716592022974e-03, -7.960326227344804e-05, 4.512524726629334e-03],
+            [1.498827222036349e-03, -2.688023283997210e-03, 5.060417123819799e-03],
+        ],
+        rtol=1e-12,
+    )
 
 
 def prices() -> pd.DataFrame:

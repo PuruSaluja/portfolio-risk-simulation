@@ -73,16 +73,25 @@ def _returns_frame(returns: pd.DataFrame) -> np.ndarray:
 def _factor(covariance: np.ndarray) -> np.ndarray:
     """A matrix ``F`` with ``F @ F.T == covariance``, for a positive semi-definite one.
 
-    From the eigendecomposition rather than Cholesky, so a singular matrix (a fund that
-    never varies, or one that is a mix of others) still works.
+    The Cholesky factor when the matrix is positive definite: it is unique, so a seed
+    draws the same paths whichever linear-algebra library numpy was built with. A
+    singular matrix (a fund that never varies, or one that is a mix of others) has none,
+    and the eigendecomposition stands in, each eigenvector's sign fixed so that its
+    largest entry is positive (libraries return either sign).
     """
+    try:
+        return np.linalg.cholesky(covariance)
+    except np.linalg.LinAlgError:
+        pass
     eigenvalues, vectors = np.linalg.eigh(covariance)
     largest = max(float(eigenvalues[-1]), 0.0)
     if eigenvalues[0] < -1e-12 * largest:
         raise ValueError(
             f"the covariance matrix is not positive semi-definite (eigenvalue {eigenvalues[0]:.3g})"
         )
-    return vectors * np.sqrt(np.clip(eigenvalues, 0.0, None))
+    columns = np.arange(len(vectors))
+    signs = np.where(vectors[np.argmax(np.abs(vectors), axis=0), columns] < 0, -1.0, 1.0)
+    return vectors * signs * np.sqrt(np.clip(eigenvalues, 0.0, None))
 
 
 @dataclass(frozen=True, eq=False)
