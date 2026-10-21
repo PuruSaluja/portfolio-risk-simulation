@@ -179,7 +179,7 @@ def test_a_constant_daily_return_annualises_exactly() -> None:
     r = daily([0.0004] * 504)
     assert annualised_return(r, 252) == pytest.approx(1.0004**252 - 1, rel=1e-12)
     assert annualised_mean(r, 252) == pytest.approx(0.0004 * 252, rel=1e-12)
-    assert annualised_volatility(r, 252) == pytest.approx(0.0, abs=1e-15)
+    assert annualised_volatility(r, 252) == 0.0
 
 
 def test_the_compound_rate_reproduces_the_total_growth() -> None:
@@ -328,3 +328,12 @@ def test_the_autocorrelation_helpers_refuse_unusable_input() -> None:
         autocorrelation(pd.DataFrame({"A": [0.01, 0.0, 0.02]}))
     with pytest.raises(ValueError, match="periods_per_year"):
         overlapping_volatility(pd.Series([0.01, -0.01] * 20), 21, 0)
+
+
+def test_returns_that_never_vary_have_exactly_no_volatility() -> None:
+    # The mean of ten 0.01s is not exactly 0.01, which would leave about 3e-17.
+    assert annualised_volatility(pd.Series([0.01] * 10), 252) == 0.0
+    frame = pd.DataFrame({"A": [0.01] * 10, "B": [0.0, 0.01] * 5})
+    volatility = annualised_volatility(frame, 252)
+    assert volatility["A"] == 0.0
+    assert volatility["B"] == pytest.approx(np.std([0.0, 0.01] * 5, ddof=1) * math.sqrt(252))

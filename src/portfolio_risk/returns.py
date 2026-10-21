@@ -135,7 +135,12 @@ def annualised_volatility(returns: Returns, periods_per_year: float) -> float | 
     """The sample standard deviation (n - 1) times the square root of ``periods_per_year``."""
     _check(returns, minimum=2)
     _check_periods(periods_per_year)
-    return returns.std(ddof=1) * math.sqrt(periods_per_year)
+    volatility = returns.std(ddof=1) * math.sqrt(periods_per_year)
+    # Returns that never vary have none; computed, their mean's last-bit error leaves ~3e-17.
+    flat = returns.max() == returns.min()
+    if isinstance(returns, pd.Series):
+        return 0.0 if flat else volatility
+    return volatility.mask(flat, 0.0)
 
 
 def annualised_return(returns: Returns, periods_per_year: float) -> float | pd.Series:
