@@ -16,6 +16,7 @@ from portfolio_risk.montecarlo import (
     check_weights,
     describe,
     fit_dof,
+    fit_model,
     historical_portfolio_returns,
     horizon_returns,
     log_likelihood,
@@ -551,6 +552,38 @@ def test_the_block_length_refuses_what_it_cannot_measure() -> None:
         optimal_block_length(np.zeros((100, 2)))
 
 
+def test_fit_model_reads_each_spec() -> None:
+    returns = daily_returns(n=400)
+    normal, parameters = fit_model("normal", returns)
+    assert type(normal) is NormalModel and parameters.keys() == set(TICKERS)
+    t, parameters = fit_model("t", returns)
+    assert type(t) is StudentTModel and parameters["dof"] == t.dof
+    logs = np.log1p(returns.to_numpy())
+    assert parameters["likelihood_ratio_against_normal"] == pytest.approx(
+        2
+        * (
+            log_likelihood(logs, t.mean, t.covariance, t.dof)
+            - log_likelihood(logs, t.mean, t.covariance)
+        )
+    )
+    boot, parameters = fit_model("bootstrap", returns)
+    assert parameters["mean_block"] == pytest.approx(
+        np.mean(list(parameters["block_lengths"].values()))
+    )
+    assert parameters["block_lengths"]["A"] == optimal_block_length(returns["A"])
+    boot, parameters = fit_model("bootstrap:21", returns)
+    assert boot.mean_block == 21.0 and parameters == {"mean_block": 21.0}
+    for spec, message in [
+        ("garch", "a model is normal"),
+        ("t:3", "a model is normal"),
+        ("bootstrap:x", "not a number"),
+        ("bootstrap:inf", "finite"),
+        ("bootstrap:0.5", "mean_block"),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            fit_model(spec, returns)
+
+
 def prices() -> pd.DataFrame:
     days = pd.bdate_range("2023-01-02", "2024-12-31")
     rng = np.random.default_rng(0)
@@ -573,17 +606,25 @@ def test_the_command_prints_and_writes_the_figures(tmp_path: Path, capsys) -> No
     printed = capsys.readouterr().out
     assert "1,200 paths of 21 days, seed 0" in printed
     assert "AAA 70.0%, BBB 30.0%" in printed
+    assert "degrees of freedom" in printed and "bootstrap: mean block" in printed
     written = json.loads(out.read_text(encoding="utf-8"))
     assert written["cache_sha256"] == manifest["sha256"]
     assert written["weights"] == {"AAA": 0.7, "BBB": 0.3}
-    assert written["daily"]["simulated"]["count"] == 1200 * 21
-    assert written["horizon"]["simulated"]["count"] == 1200
-    assert written["horizon"]["historical"]["count"] == 521 - 21 + 1
+    assert [m["model"] for m in written["models"]] == ["normal", "t", "bootstrap"]
+    for entry in written["models"]:
+        assert entry["daily"]["count"] == 1200 * 21
+        assert entry["horizon"]["count"] == 1200
+    assert written["historical"]["daily"]["count"] == 521
+    assert written["historical"]["horizon"]["count"] == 521 - 21 + 1
     assert b"\r" not in out.read_bytes()
-    # The same seed gives the same figures.
+    # The same seed gives the same figures, and each model's figures are the same
+    # whichever other models run beside it.
     again = tmp_path / "again.json"
     main([*argv[:-1], str(again), "--weights", "AAA=0.7,BBB=0.3"])
     assert json.loads(again.read_text(encoding="utf-8")) == written
+    alone = tmp_path / "alone.json"
+    main([*argv[:-1], str(alone), "--weights", "AAA=0.7,BBB=0.3", "--model", "t"])
+    assert json.loads(alone.read_text(encoding="utf-8"))["models"] == [written["models"][1]]
 
 
 def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
@@ -597,6 +638,9 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         (["--horizon", "600"], "521 daily returns hold 0 windows of 600 days"),
         (["--horizon", "521"], "hold 1 window of 521 days; needs at least 2"),
         (["--paths", "1"], "at least 2 paths"),
+        (["--model", "t", "--model", "t"], "named twice"),
+        (["--model", "garch"], "a model is normal"),
+        (["--model", "bootstrap:600"], "mean_block"),
         (["--json", str(tmp_path)], ""),  # a folder
     ]:
         assert main(["--cache", str(cache), "--paths", "10", *argv]) == 1

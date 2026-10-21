@@ -469,13 +469,71 @@ def parse_weights(text: str, tickers: Sequence[str]) -> dict[str, float]:
     return weights
 
 
+MODELS = ("normal", "t", "bootstrap")
+
+
+def fit_model(spec: str, daily: pd.DataFrame) -> tuple[Model, dict[str, Any]]:
+    """The model a ``--model`` value names, fitted to ``daily``, and what was fitted.
+
+    ``normal``, ``t``, or ``bootstrap``, which takes the funds' mean Politis-White
+    block length unless one follows a colon (``bootstrap:21``).
+    """
+    name, colon, block = spec.partition(":")
+    if name not in MODELS or (colon and name != "bootstrap"):
+        raise ValueError(
+            f"a model is normal, t, bootstrap or bootstrap:<mean block length>, not {spec!r}"
+        )
+    if name == "normal":
+        model = NormalModel.fit(daily)
+        parameters = {
+            t: {
+                "log_mean_annualised": float(model.mean[i] * ret.TRADING_DAYS_PER_YEAR),
+                "log_volatility_annualised": math.sqrt(
+                    model.covariance[i, i] * ret.TRADING_DAYS_PER_YEAR
+                ),
+            }
+            for i, t in enumerate(model.tickers)
+        }
+        return model, parameters
+    if name == "t":
+        model = StudentTModel.fit(daily)
+        logs = np.log1p(daily.to_numpy(dtype="float64"))
+        with_t = log_likelihood(logs, model.mean, model.covariance, model.dof)
+        normal = log_likelihood(logs, model.mean, model.covariance)
+        return model, {"dof": model.dof, "likelihood_ratio_against_normal": 2 * (with_t - normal)}
+    if not colon:
+        lengths = {str(t): optimal_block_length(daily[t]) for t in daily.columns}
+        model = BootstrapModel.fit(daily, float(np.mean(list(lengths.values()))))
+        return model, {"mean_block": model.mean_block, "block_lengths": lengths}
+    try:
+        mean_block = float(block)
+    except ValueError:
+        raise ValueError(f"the mean block length is not a number: {block!r}") from None
+    if not math.isfinite(mean_block):
+        raise ValueError(f"the mean block length must be finite, not {block!r}")
+    model = BootstrapModel.fit(daily, mean_block)
+    return model, {"mean_block": model.mean_block}
+
+
 def run(
-    prices: pd.DataFrame, weights_text: str, horizon: int, paths: int, seed: int
+    prices: pd.DataFrame,
+    weights_text: str,
+    horizon: int,
+    paths: int,
+    seed: int,
+    models: Sequence[str] = MODELS,
 ) -> dict[str, Any]:
-    """Fit the model to the cache's daily total returns, simulate, and compare with history."""
+    """Fit each model to the cache's daily total returns, simulate, and compare with history.
+
+    Every model is simulated from the same seed.
+    """
     daily = ret.total_returns(prices)
     tickers = [str(t) for t in daily.columns]
     weights = parse_weights(weights_text, tickers)
+    if not models:
+        raise ValueError("needs at least one model")
+    if len(set(models)) != len(models):
+        raise ValueError("a model is named twice")
     if isinstance(paths, int) and paths == 1:
         raise ValueError("needs at least 2 paths to describe their spread")
     windows = len(daily) - horizon + 1
@@ -484,57 +542,62 @@ def run(
             f"{len(daily)} daily returns hold {max(windows, 0)} "
             f"window{'' if windows == 1 else 's'} of {horizon} days; needs at least 2"
         )
-    model = NormalModel.fit(daily)
-    simulation = simulate(model, weights, horizon, paths, seed)
+    fitted = [(spec, *fit_model(spec, daily)) for spec in models]
     history = historical_portfolio_returns(daily, weights)
+    entries = []
+    for spec, model, parameters in fitted:
+        simulation = simulate(model, weights, horizon, paths, seed)
+        entries.append(
+            {
+                "model": spec,
+                "parameters": parameters,
+                "daily": describe(simulation.returns),
+                "horizon": describe(simulation.horizon_returns),
+            }
+        )
     return {
         "first_return": daily.index[0].date().isoformat(),
         "last_return": daily.index[-1].date().isoformat(),
-        "model": model.name,
         "weights": simulation.weights,
         "horizon_days": horizon,
         "paths": paths,
         "seed": seed,
-        "fit": {
-            t: {
-                "log_mean_annualised": float(model.mean[i] * ret.TRADING_DAYS_PER_YEAR),
-                "log_volatility_annualised": math.sqrt(
-                    model.covariance[i, i] * ret.TRADING_DAYS_PER_YEAR
-                ),
-            }
-            for i, t in enumerate(model.tickers)
-        },
-        "daily": {
-            "simulated": describe(simulation.returns),
-            "historical": describe(history.to_numpy()),
-        },
-        "horizon": {
-            "simulated": describe(simulation.horizon_returns),
+        "historical": {
+            "daily": describe(history.to_numpy()),
             # Overlapping windows, one starting on every day: far from independent.
-            "historical": describe(horizon_returns(history, horizon)),
+            "horizon": describe(horizon_returns(history, horizon)),
         },
+        "models": entries,
     }
 
 
 def _print(result: dict[str, Any]) -> None:
     weights = ", ".join(f"{t} {w:.1%}" for t, w in result["weights"].items() if w > 0)
     print(
-        f"{result['model']} model of daily returns {result['first_return']} to "
-        f"{result['last_return']}; {result['paths']:,} paths of {result['horizon_days']} days, "
-        f"seed {result['seed']}\nportfolio, rebalanced daily: {weights}"
+        f"daily returns {result['first_return']} to {result['last_return']}; "
+        f"{result['paths']:,} paths of {result['horizon_days']} days, seed {result['seed']}\n"
+        f"portfolio, rebalanced daily: {weights}"
     )
-    header = f"{'':22} {'mean':>8} {'sd':>8} {'skew':>7} {'exkurt':>7} {'P(loss)':>8}" + "".join(
+    for entry in result["models"]:
+        parameters = entry["parameters"]
+        if "dof" in parameters:
+            print(
+                f"t: {parameters['dof']:.2f} degrees of freedom (likelihood ratio against the "
+                f"normal {parameters['likelihood_ratio_against_normal']:,.0f})"
+            )
+        elif "mean_block" in parameters:
+            print(f"{entry['model']}: mean block {parameters['mean_block']:.2f} days")
+    header = f"{'':16} {'mean':>8} {'sd':>8} {'skew':>7} {'exkurt':>7} {'P(loss)':>8}" + "".join(
         f" {'q' + format(q * 100, 'g'):>8}" for q in QUANTILES
     )
     for scale in ("daily", "horizon"):
-        print(
-            f"\n{scale} returns" if scale == "daily" else f"\n{result['horizon_days']}-day returns"
-        )
+        print("\ndaily returns" if scale == "daily" else f"\n{result['horizon_days']}-day returns")
         print(header)
-        for source in ("simulated", "historical"):
-            d = result[scale][source]
+        rows = [("history", result["historical"][scale])]
+        rows += [(entry["model"], entry[scale]) for entry in result["models"]]
+        for label, d in rows:
             print(
-                f"{source:22} {d['mean']:>8.3%} {d['sd']:>8.3%} {d['skewness']:>7.2f} "
+                f"{label:16} {d['mean']:>8.3%} {d['sd']:>8.3%} {d['skewness']:>7.2f} "
                 f"{d['excess_kurtosis']:>7.2f} {d['probability_of_loss']:>8.1%}"
                 + "".join(f" {d[f'q{q * 100:g}']:>8.2%}" for q in QUANTILES)
             )
@@ -548,6 +611,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--weights", default="equal", help='"equal" (the default) or e.g. SPY=0.6,AGG=0.4'
     )
+    parser.add_argument(
+        "--model",
+        action="append",
+        help="normal, t, bootstrap or bootstrap:<mean block length>; may be given more than "
+        "once (default: normal, t and bootstrap)",
+    )
     parser.add_argument("--horizon", type=int, default=ret.TRADING_DAYS_PER_YEAR)
     parser.add_argument("--paths", type=int, default=10_000)
     parser.add_argument("--seed", type=int, default=0)
@@ -556,9 +625,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         prices = load_cache(args.cache)
         sha256 = read_manifest(args.cache)["sha256"]
+        models = args.model or MODELS
         result = {
             "cache_sha256": sha256,
-            **run(prices, args.weights, args.horizon, args.paths, args.seed),
+            **run(prices, args.weights, args.horizon, args.paths, args.seed, models),
         }
         # Written before anything is printed, so a failure leaves no half-finished run.
         if args.json:
