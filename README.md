@@ -171,7 +171,10 @@ Three models, each answering for an assumption the one before makes:
   at the sample's, so only the tails change). Every fund on a day shares one
   draw of the t's mixing variable, so a violent day is violent for all of them.
   Days are still independent. The likelihood matches scipy's `multivariate_t`
-  to about 1e-15, and the fitted degrees of freedom scipy's optimiser to 7e-9.
+  to about 1e-15, and the fitted degrees of freedom scipy's optimiser to 7e-9. A
+  fund that never varies, or one that is a mix of others, leaves the returns in
+  fewer dimensions than funds; the likelihood is then the density within the
+  space they span (for a fund that never varies, that of the other funds).
 - **Stationary block bootstrap** (Politis and Romano, 1994). Paths are built
   from blocks of consecutive historical days, whole days at a time so the funds
   keep the moves they made together; each block starts on a random day and its
@@ -179,8 +182,13 @@ Three models, each answering for an assumption the one before makes:
   first. The returns are the real ones, with their tails, and within a block
   their autocorrelation and volatility clustering. By default the mean length
   is the funds' average of the length Politis and White (2004, with the 2009
-  correction) choose for each; the tests check it against the closed form for
-  autoregressive and moving-average series.
+  correction) choose for each, leaving out funds that never vary (any block
+  reproduces them). The window is found as in the authors' reference code, and
+  the lengths match the arch package's (8.0.0) to 1e-15 on these funds and to
+  1e-9 on 273 of 300 random series; of the rest, 26 are where arch gives under a
+  day, which is kept at 1, and one where a correlation sits at the significance
+  threshold and arch's sums leave out a day. The tests also check it against the
+  closed form for autoregressive and moving-average series.
 
 Runs are reproducible: the seed fixes every path, every model draws from the
 same seed, and path `i` is the same whatever number of paths is asked for (they
@@ -204,23 +212,23 @@ The eight funds in equal weights, 10,000 one-year (252-day) paths, seed 0
 ([`results/montecarlo.json`](results/montecarlo.json)), against the same
 portfolio's history, 4 January 2005 to 30 September 2026. The t fit has 4.12
 degrees of freedom (likelihood ratio against the normal 12,375, for one extra
-parameter). Politis and White's lengths run from 1.0 day (GLD, none of whose
-first 100 autocorrelations clears the method's significance threshold) to 13.3
-(AGG), 7.9 on average.
+parameter). Politis and White's lengths run from 1.8 days (GLD, none of whose
+first 100 autocorrelations clears the method's significance threshold) to 12.1
+(AGG and TLT), 7.8 on average.
 
 | Daily return | Sd | Excess kurtosis | 0.1% quantile | 1% quantile | 99% quantile |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | History | 0.871% | 12.92 | -5.07% | -2.41% | 2.35% |
 | Normal | 0.872% | 0.01 | -2.61% | -1.97% | 2.09% |
 | Student-t | 0.872% | 15.96 | -4.16% | -2.22% | 2.39% |
-| Bootstrap, mean block 7.9 days | 0.872% | 12.86 | -5.10% | -2.43% | 2.36% |
+| Bootstrap, mean block 7.8 days | 0.872% | 12.86 | -5.10% | -2.43% | 2.36% |
 
 | 252-day return | Mean | Sd | 0.1% quantile | 1% quantile | 5% quantile | Median | Chance of a loss |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | History | 9.07% | 11.92% | -31.82% | -25.49% | -14.62% | 9.65% | 16.1% |
 | Normal | 9.46% | 15.05% | -30.31% | -21.83% | -13.40% | 8.62% | 27.6% |
 | Student-t | 9.57% | 15.18% | -31.46% | -21.52% | -13.50% | 8.57% | 27.2% |
-| Bootstrap, mean block 7.9 days | 9.20% | 13.53% | -32.60% | -21.21% | -12.47% | 8.83% | 24.7% |
+| Bootstrap, mean block 7.8 days | 9.20% | 13.57% | -32.66% | -21.39% | -12.56% | 8.83% | 24.8% |
 | Bootstrap, 1 day | 8.89% | 14.83% | -30.46% | -21.06% | -13.51% | 7.93% | 28.3% |
 | Bootstrap, 21 days | 9.07% | 12.90% | -31.90% | -22.07% | -12.06% | 8.99% | 22.5% |
 | Bootstrap, 63 days | 8.84% | 12.31% | -38.13% | -24.17% | -12.27% | 9.21% | 20.7% |
@@ -252,9 +260,9 @@ What the comparison shows:
   normal's standard deviation is 15.1% against history's 11.9%, and it puts a
   loss in 27.6% of years against 16.1% of windows (4 of 21 full calendar years).
   Blocks keep that dependence: the standard deviation falls from 14.8% with
-  1-day blocks to 13.5% at the Politis-White length, 12.9% at 21 days and 12.1%
+  1-day blocks to 13.6% at the Politis-White length, 12.9% at 21 days and 12.1%
   at 252. Politis and White choose blocks for the variance of a sample mean, and
-  7.9 days keeps the short-lag reversals but not the longer ones.
+  7.8 days keeps the short-lag reversals but not the longer ones.
 - **Long blocks agree with history partly because they are history.** With a
   mean block of 252 days a one-year path is often a single stretch of the data,
   so the bootstrap's 1% quantile (-25.2%; -23.9% to -25.6% over seeds 0 to 5)
@@ -271,9 +279,9 @@ What the comparison shows:
 Over seeds 0 to 5 the standard deviations and chances of a loss move by less
 than the gaps the bullets above rest on. The standard deviations run 15.1% to
 15.2% (normal), 15.0% to 15.3% (t), 14.8% to 15.3% (1-day blocks), 13.4% to
-13.7% (Politis-White), 12.6% to 12.9% (21 days), 12.2% to 12.4% (63) and 11.8%
+13.8% (Politis-White), 12.6% to 12.9% (21 days), 12.2% to 12.4% (63) and 11.8%
 to 12.1% (252); the chances of a loss 27.6% to 28.7%, 27.2% to 29.3%, 27.5% to
-28.4%, 24.2% to 25.7%, 22.5% to 23.6%, 20.1% to 20.8% and 17.3% to 17.8%. The
+28.4%, 24.4% to 25.4%, 22.5% to 23.6%, 20.1% to 20.8% and 17.3% to 17.8%. The
 daily 0.1% quantiles: normal -2.61% to -2.62%, t -4.15% to -4.21%, bootstrap
 -5.10% throughout. The one-year tail quantiles are noisier: the 0.1% quantile
 rests on 10 of the 10,000 paths and moves by up to 6 points between seeds (63-day
