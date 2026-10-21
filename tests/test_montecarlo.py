@@ -658,6 +658,10 @@ def test_describe_refuses_values_that_are_not_finite(bad) -> None:
         describe(np.array([0.1, bad, 0.2]))
 
 
+def test_equal_weights_are_named_in_any_case() -> None:
+    assert parse_weights(" Equal ", TICKERS) == {t: 1 / 3 for t in TICKERS}
+
+
 def prices() -> pd.DataFrame:
     days = pd.bdate_range("2023-01-02", "2024-12-31")
     rng = np.random.default_rng(0)
@@ -713,6 +717,7 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         (["--horizon", "521"], "hold 1 window of 521 days; needs at least 2"),
         (["--paths", "1"], "at least 2 paths"),
         (["--model", "t", "--model", "t"], "named twice"),
+        (["--model", "bootstrap:21", "--model", "bootstrap:21.0"], "named twice"),
         (["--model", "garch"], "a model is normal"),
         (["--model", "bootstrap:600"], "mean_block"),
         (["--json", str(tmp_path)], ""),  # a folder

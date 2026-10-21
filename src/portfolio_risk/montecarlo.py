@@ -477,7 +477,7 @@ def describe(values: np.ndarray) -> dict[str, float]:
 
 def parse_weights(text: str, tickers: Sequence[str]) -> dict[str, float]:
     """``"equal"``, or ``"SPY=0.6,AGG=0.4"``; funds not named get 0."""
-    if text == "equal":
+    if text.strip().lower() == "equal":
         return {t: 1.0 / len(tickers) for t in tickers}
     weights: dict[str, float] = {}
     for part in text.split(","):
@@ -496,6 +496,15 @@ def parse_weights(text: str, tickers: Sequence[str]) -> dict[str, float]:
 
 
 MODELS = ("normal", "t", "bootstrap")
+
+
+def _model_key(spec: str) -> str:
+    """A model's name with any block length as a number, so 21 and 21.0 are one model."""
+    name, colon, block = spec.partition(":")
+    try:
+        return f"{name}:{float(block)!r}" if colon else name
+    except ValueError:
+        return spec
 
 
 def fit_model(spec: str, daily: pd.DataFrame) -> tuple[Model, dict[str, Any]]:
@@ -558,7 +567,7 @@ def run(
     weights = parse_weights(weights_text, tickers)
     if not models:
         raise ValueError("needs at least one model")
-    if len(set(models)) != len(models):
+    if len({_model_key(spec) for spec in models}) != len(models):
         raise ValueError("a model is named twice")
     if isinstance(paths, int) and paths == 1:
         raise ValueError("needs at least 2 paths to describe their spread")
