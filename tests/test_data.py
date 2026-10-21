@@ -89,12 +89,11 @@ def test_capital_gains_are_zero_when_yahoo_leaves_the_column_out() -> None:
     assert (prices["capital_gain"] == 0).all()
 
 
-def test_a_day_without_a_close_for_one_ticker_is_left_out_for_that_ticker() -> None:
+def test_a_day_without_a_close_for_one_ticker_is_refused() -> None:
     frame = yahoo_frame()
     frame.loc["2024-01-09", ("Close", "AAA")] = np.nan
-    prices = fetch(frame)
-    assert (prices["ticker"] == "AAA").sum() == 8
-    assert (prices["ticker"] == "BBB").sum() == 9
+    with pytest.raises(DataError, match="AAA: no price on 2024-01-09 of the days the others"):
+        fetch(frame)
 
 
 def test_timezone_aware_dates_become_calendar_dates() -> None:
@@ -228,43 +227,41 @@ def test_a_ticker_that_starts_more_than_a_week_late_is_refused() -> None:
         fetch(frame)
 
 
-def test_a_ticker_that_starts_within_a_week_is_accepted() -> None:
+def test_funds_that_all_start_within_a_week_are_accepted() -> None:
     frame = yahoo_frame()
-    frame.loc[:"2024-01-05", ("Close", "BBB")] = np.nan  # first price 8 January
+    frame.loc[:"2024-01-05", ("Close", slice(None))] = np.nan  # both start on 8 January
     prices = fetch(frame)
-    assert prices[prices["ticker"] == "BBB"]["date"].iloc[0] == date(2024, 1, 8)
+    assert set(prices.groupby("ticker")["date"].first()) == {date(2024, 1, 8)}
 
 
-def test_a_ticker_that_stops_more_than_a_week_before_the_others_is_refused() -> None:
+def test_a_ticker_that_stops_before_the_others_is_refused() -> None:
     days = pd.bdate_range("2024-01-02", "2024-01-31")
     frame = yahoo_frame(days=days)
     frame.loc["2024-01-19":, ("Close", "BBB")] = np.nan  # last price 18 January
-    with pytest.raises(DataError, match=r"BBB: the last price is on 2024-01-18, more than 7 days"):
+    with pytest.raises(DataError, match="BBB: no price on 2024-01-19 and on 8 more of the days"):
         fetch(frame, end=date(2024, 1, 31))
 
 
-def test_a_ticker_that_stops_within_a_week_of_the_others_is_accepted() -> None:
-    days = pd.bdate_range("2024-01-02", "2024-01-31")
-    frame = yahoo_frame(days=days)
-    frame.loc["2024-01-25":, ("Close", "BBB")] = np.nan  # last price 24 January, 7 days before
-    prices = fetch(frame, end=date(2024, 1, 31))
-    assert prices[prices["ticker"] == "BBB"]["date"].iloc[-1] == date(2024, 1, 24)
+def test_a_ticker_that_stops_a_day_early_is_refused() -> None:
+    frame = yahoo_frame()
+    frame.loc["2024-01-12", ("Close", "BBB")] = np.nan
+    with pytest.raises(DataError, match="BBB: no price on 2024-01-12 of the days"):
+        fetch(frame)
 
 
-def test_a_gap_of_more_than_a_week_is_refused() -> None:
+def test_a_gap_is_refused_naming_its_first_day_and_length() -> None:
     days = pd.bdate_range("2024-01-02", "2024-01-31")
     frame = yahoo_frame(days=days)
     frame.loc["2024-01-09":"2024-01-16", ("Close", "AAA")] = np.nan
-    with pytest.raises(DataError, match="AAA: no prices between 2024-01-08 and 2024-01-17"):
+    with pytest.raises(DataError, match="AAA: no price on 2024-01-09 and on 5 more of the days"):
         fetch(frame, end=date(2024, 1, 31))
 
 
-def test_a_gap_of_a_week_is_accepted() -> None:
-    days = pd.bdate_range("2024-01-02", "2024-01-31")
-    frame = yahoo_frame(days=days)
-    frame.loc["2024-01-09":"2024-01-12", ("Close", "AAA")] = np.nan  # 8 to 15 January
-    prices = fetch(frame, end=date(2024, 1, 31))
-    assert (prices["ticker"] == "AAA").sum() == len(days) - 4
+def test_days_no_fund_traded_are_not_missing() -> None:
+    frame = yahoo_frame()
+    frame.loc["2024-01-09", ("Close", slice(None))] = np.nan  # a closure for every fund
+    prices = fetch(frame)
+    assert (prices["ticker"] == "AAA").sum() == (prices["ticker"] == "BBB").sum() == 8
 
 
 def test_prices_outside_the_window_are_refused() -> None:
@@ -429,7 +426,8 @@ def rewrite_with_matching_checksum(cache: Path, text: str, **manifest_changes) -
 def test_a_cache_whose_rows_differ_from_the_manifest_is_refused(tmp_path: Path) -> None:
     cache = write(tmp_path)
     lines = cache.read_text(encoding="utf-8").splitlines(keepends=True)
-    rewrite_with_matching_checksum(cache, "".join(lines[:-1]))  # last BBB day dropped
+    # The last day dropped for both funds (header, then AAA's nine days, then BBB's).
+    rewrite_with_matching_checksum(cache, "".join(lines[:9] + lines[10:-1]))
     with pytest.raises(DataError, match="rows or dates differ from its manifest"):
         load_cache(cache)
 

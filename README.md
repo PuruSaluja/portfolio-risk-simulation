@@ -59,15 +59,16 @@ manifest, from a fetch on 2026-10-20: 5,470 trading days for each fund,
 The cache keeps each day's close (split-adjusted, not dividend-adjusted),
 dividend, capital-gain distribution, split ratio and volume. The fetch
 checks that every fund has prices from within a week of the window's start
-to within a week of the others' last price, with no gap of more than a week
-(so no fund joins, leaves or drops out part way through); that the window
-ends before today in New York, since a bar fetched during a session holds the
-latest trade rather than the close; that closes are positive and finite; and
-that dividends, splits and volumes are not negative. Over the window it holds 865 dividends (none for GLD,
-which pays none; 259 and 260 monthly ones for TLT and AGG), no capital-gain
+and a price on every day any of them traded (so no fund joins, leaves or
+drops out part way through, and no day is lost to every fund's returns);
+that the window ends before today in New York, since a bar fetched during a
+session holds the latest trade rather than the close; that closes are
+positive and finite; and that dividends, splits and volumes are not
+negative. Over the window it holds 865 dividends (none for GLD, which pays
+none; 259 and 260 monthly ones for TLT and AGG), no capital-gain
 distributions, and four splits: IWM 2-for-1, EFA and EEM 3-for-1 on 9 June
-2005, and EEM 3-for-1 again on 24 July 2008. No fund's close moves more
-than 4% on a split day, so the closes are adjusted for them.
+2005, and EEM 3-for-1 again on 24 July 2008. No fund's close moves more than
+4% on a split day, so the closes are adjusted for them.
 
 **Why Yahoo's adjusted close is not kept.** Two fetches a few seconds apart
 gave adjusted closes that differed by up to 2 parts in a million on 26,377
