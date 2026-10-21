@@ -212,9 +212,10 @@ The eight funds in equal weights, 10,000 one-year (252-day) paths, seed 0
 ([`results/montecarlo.json`](results/montecarlo.json)), against the same
 portfolio's history, 4 January 2005 to 30 September 2026. The t fit has 4.12
 degrees of freedom (likelihood ratio against the normal 12,375, for one extra
-parameter). Politis and White's lengths run from 1.8 days (GLD, none of whose
-first 100 autocorrelations clears the method's significance threshold) to 12.1
-(AGG and TLT), 7.8 on average.
+parameter). Politis and White's lengths run from 1.8 days (GLD: none of its
+first 100 autocorrelations clears the method's significance threshold, so its
+window is the shortest the method uses, lag 1 alone) to 12.1 (AGG and TLT), 7.8
+on average.
 
 | Daily return | Sd | Excess kurtosis | 0.1% quantile | 1% quantile | 99% quantile |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -267,8 +268,8 @@ What the comparison shows:
   mean block of 252 days a one-year path is often a single stretch of the data,
   so the bootstrap's 1% quantile (-25.2%; -23.9% to -25.6% over seeds 0 to 5)
   and chance of a loss (17.3%) land near the historical windows' (-25.5%, 16.1%)
-  largely by replaying them; with only
-  about 21 independent years, it cannot show a year the data does not hold.
+  largely by replaying them; with only about 21 independent years, it cannot
+  show a year the data does not hold.
 - The means agree: the normal's 9.46% against 9.28% expected from the fitted
   moments (`(mean of exp(mu + var / 2)) ^ 252 - 1`), 1.2 standard errors apart,
   and 9.07% over the historical windows. The 1-day bootstrap's 8.89% is 2.6
