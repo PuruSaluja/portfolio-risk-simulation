@@ -166,8 +166,18 @@ def log_likelihood(
     The t's scale matrix is ``covariance * (dof - 2) / dof``, so its covariance is
     ``covariance`` whatever ``dof`` is; an infinite ``dof`` gives the normal.
     """
-    logs = np.atleast_2d(np.asarray(logs, dtype="float64"))
-    n, p = logs.shape
+    logs = np.asarray(logs, dtype="float64")
+    mean = np.asarray(mean, dtype="float64")
+    covariance = np.asarray(covariance, dtype="float64")
+    p = len(mean)
+    if logs.ndim != 2 or logs.shape[1] != p or mean.ndim != 1 or covariance.shape != (p, p):
+        raise ValueError(
+            f"expected days by funds log returns, a mean per fund and a covariance between "
+            f"them, not shapes {logs.shape}, {mean.shape} and {covariance.shape}"
+        )
+    if not isinstance(dof, int | float) or isinstance(dof, bool) or not dof > 2:
+        raise ValueError(f"dof must be above 2 (infinite for the normal), not {dof!r}")
+    n = len(logs)
     distances, log_det = _mahalanobis(logs, mean, covariance)
     if math.isinf(dof):
         return float(-0.5 * (n * (p * math.log(2 * math.pi) + log_det) + distances.sum()))
@@ -432,6 +442,11 @@ def horizon_returns(daily: np.ndarray | pd.Series, horizon: int) -> np.ndarray:
     values = np.asarray(daily, dtype="float64")
     if values.ndim != 1 or len(values) < horizon:
         raise ValueError(f"needs at least {horizon} daily returns in one series")
+    if not np.isfinite(values).all():
+        raise ValueError("returns include NaN or infinite values")
+    # A -100% day would leave every later window the difference of two infinite sums.
+    if (values <= -1.0).any():
+        raise ValueError("a return of -100% or less (a price at or below zero) cannot compound")
     logs = np.concatenate([[0.0], np.cumsum(np.log1p(values))])
     return np.expm1(logs[horizon:] - logs[:-horizon])
 
@@ -441,6 +456,8 @@ def describe(values: np.ndarray) -> dict[str, float]:
     values = np.asarray(values, dtype="float64").ravel()
     if values.size < 2:
         raise ValueError(f"needs at least 2 values to describe, got {values.size}")
+    if not np.isfinite(values).all():
+        raise ValueError("values include NaN or infinite values")
     mean = float(values.mean())
     sd = float(values.std(ddof=1))
     deviations = values - mean

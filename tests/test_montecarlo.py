@@ -626,6 +626,38 @@ def test_the_first_draws_are_pinned() -> None:
     )
 
 
+@pytest.mark.parametrize("dof", [2.0, 1.5, -math.inf, math.nan, True, "5"])
+def test_the_likelihood_refuses_dof_of_two_or_less(dof) -> None:
+    with pytest.raises(ValueError, match="dof must be above 2"):
+        log_likelihood(np.zeros((4, 3)), MEAN, COVARIANCE, dof)
+
+
+@pytest.mark.parametrize(
+    ("logs", "mean", "cov"),
+    [
+        (np.zeros(5), np.zeros(1), np.eye(1)),  # one fund's days need a column
+        (np.zeros((5, 3)), np.zeros(2), np.eye(2)),
+        (np.zeros((5, 2)), np.zeros(2), np.eye(3)),
+    ],
+)
+def test_the_likelihood_refuses_mismatched_shapes(logs, mean, cov) -> None:
+    with pytest.raises(ValueError, match="expected days by funds"):
+        log_likelihood(logs, mean, cov)
+
+
+def test_horizon_returns_refuse_what_cannot_compound() -> None:
+    with pytest.raises(ValueError, match="-100%"):
+        horizon_returns(np.array([0.01, -1.0, 0.02, 0.03, 0.01]), 2)
+    with pytest.raises(ValueError, match="NaN"):
+        horizon_returns(np.array([0.01, np.nan, 0.02]), 2)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf])
+def test_describe_refuses_values_that_are_not_finite(bad) -> None:
+    with pytest.raises(ValueError, match="NaN or infinite"):
+        describe(np.array([0.1, bad, 0.2]))
+
+
 def prices() -> pd.DataFrame:
     days = pd.bdate_range("2023-01-02", "2024-12-31")
     rng = np.random.default_rng(0)
