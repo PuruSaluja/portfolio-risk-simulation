@@ -9,6 +9,11 @@ every fund at once, so the funds move together as they did in the data.
     path compounds to a price above zero (prices are lognormal). Each day is drawn
     independently of the others: no fat tails, no volatility clustering and no
     autocorrelation, which is what the comparison with history measures.
+``StudentTModel``
+    Daily log returns are multivariate Student-t, with the same mean and covariance, so
+    only the shape changes: fatter tails, set by the degrees of freedom of greatest
+    likelihood (``fit_dof``; ``log_likelihood`` gives the normal for comparison). Days
+    are still drawn independently.
 
 ``simulate`` draws ``paths`` paths of ``horizon`` days for a portfolio held at fixed
 weights and rebalanced to them at every close, so a day's portfolio return is the
@@ -121,6 +126,117 @@ class NormalModel:
         return np.expm1(self.mean + z @ self._factor.T)
 
 
+# The degrees of freedom the Student-t fit searches: above 2, where the variance exists,
+# up to a value at which the t is all but normal.
+DOF_RANGE = (2.01, 1000.0)
+
+
+def _mahalanobis(logs: np.ndarray, mean: np.ndarray, covariance: np.ndarray):
+    """Squared distances from the mean in units of the covariance, and its log determinant."""
+    try:
+        lower = np.linalg.cholesky(covariance)
+    except np.linalg.LinAlgError:
+        raise ValueError(
+            "the covariance matrix is singular (a fund that never varies, or one that is a "
+            "mix of others), so the likelihood is undefined"
+        ) from None
+    scaled = np.linalg.solve(lower, (logs - mean).T)
+    return np.sum(scaled**2, axis=0), 2.0 * float(np.sum(np.log(np.diag(lower))))
+
+
+def log_likelihood(
+    logs: np.ndarray, mean: np.ndarray, covariance: np.ndarray, dof: float = math.inf
+) -> float:
+    """Log-likelihood of daily log returns under a multivariate t with this covariance.
+
+    The t's scale matrix is ``covariance * (dof - 2) / dof``, so its covariance is
+    ``covariance`` whatever ``dof`` is; an infinite ``dof`` gives the normal.
+    """
+    logs = np.atleast_2d(np.asarray(logs, dtype="float64"))
+    n, p = logs.shape
+    distances, log_det = _mahalanobis(logs, mean, covariance)
+    if math.isinf(dof):
+        return float(-0.5 * (n * (p * math.log(2 * math.pi) + log_det) + distances.sum()))
+    # With the scale matrix above, the density's constant and its distances both take
+    # dof - 2 where the usual form has dof.
+    constant = (
+        math.lgamma((dof + p) / 2)
+        - math.lgamma(dof / 2)
+        - p / 2 * math.log(math.pi * (dof - 2))
+        - log_det / 2
+    )
+    return float(n * constant - (dof + p) / 2 * np.sum(np.log1p(distances / (dof - 2))))
+
+
+def fit_dof(logs: np.ndarray, mean: np.ndarray, covariance: np.ndarray) -> float:
+    """The degrees of freedom of greatest likelihood, the mean and covariance held fixed."""
+    lo, hi = (math.log(d - 2) for d in DOF_RANGE)
+
+    def objective(x: float) -> float:
+        return log_likelihood(logs, mean, covariance, 2 + math.exp(x))
+
+    # A grid finds the right neighbourhood; golden-section search narrows it down.
+    grid = np.linspace(lo, hi, 121)
+    values = [objective(x) for x in grid]
+    best = int(np.argmax(values))
+    a, b = grid[max(best - 1, 0)], grid[min(best + 1, len(grid) - 1)]
+    ratio = (math.sqrt(5) - 1) / 2
+    c, d = b - ratio * (b - a), a + ratio * (b - a)
+    fc, fd = objective(c), objective(d)
+    while b - a > 1e-7:
+        if fc > fd:
+            b, d, fd = d, c, fc
+            c = b - ratio * (b - a)
+            fc = objective(c)
+        else:
+            a, c, fc = c, d, fd
+            d = a + ratio * (b - a)
+            fd = objective(d)
+    return 2 + math.exp((a + b) / 2)
+
+
+@dataclass(frozen=True, eq=False)
+class StudentTModel(NormalModel):
+    """Multivariate Student-t daily log returns, with the given mean and covariance.
+
+    Every fund on a day shares one draw of the t's mixing variable, so a calm or a
+    violent day is calm or violent for all of them, as in a market-wide shock.
+    """
+
+    dof: float
+
+    name = "t"
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if (
+            isinstance(self.dof, bool)
+            or not isinstance(self.dof, int | float)
+            or not math.isfinite(self.dof)
+            or self.dof <= 2
+        ):
+            raise ValueError(f"dof must be a finite number above 2, not {self.dof!r}")
+
+    @classmethod
+    def fit(cls, returns: pd.DataFrame, dof: float | None = None) -> StudentTModel:
+        """The sample mean and covariance of the log returns, and the likeliest ``dof``."""
+        normal = NormalModel.fit(returns)
+        if dof is None:
+            dof = fit_dof(
+                np.log1p(returns.to_numpy(dtype="float64")), normal.mean, normal.covariance
+            )
+        return cls(normal.tickers, normal.mean, normal.covariance, dof)
+
+    def sample(self, rng: np.random.Generator, paths: int, horizon: int) -> np.ndarray:
+        """Daily simple returns, ``paths`` by ``horizon`` days by fund."""
+        z = rng.standard_normal((paths, horizon, len(self.tickers)))
+        mixing = rng.chisquare(self.dof, (paths, horizon, 1))
+        return np.expm1(self.mean + (z @ self._factor.T) * np.sqrt((self.dof - 2) / mixing))
+
+
+Model = NormalModel
+
+
 def _check_count(value: int, name: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(f"{name} must be a whole number of at least 1, not {value!r}")
@@ -155,7 +271,7 @@ class Simulation:
 
 
 def simulate(
-    model: NormalModel,
+    model: Model,
     weights: Mapping[str, float],
     horizon: int,
     paths: int,

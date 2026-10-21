@@ -11,10 +11,13 @@ from portfolio_risk.data import COLUMNS, write_cache
 from portfolio_risk.montecarlo import (
     BLOCK,
     NormalModel,
+    StudentTModel,
     check_weights,
     describe,
+    fit_dof,
     historical_portfolio_returns,
     horizon_returns,
+    log_likelihood,
     main,
     parse_weights,
     simulate,
@@ -254,6 +257,111 @@ def test_normal_draws_have_neither_skew_nor_excess_kurtosis() -> None:
     n = d["count"]
     assert abs(d["skewness"]) < 4 * math.sqrt(6 / n)
     assert abs(d["excess_kurtosis"]) < 4 * math.sqrt(24 / n)
+
+
+def t_model(dof=4.0) -> StudentTModel:
+    return StudentTModel(TICKERS, MEAN, COVARIANCE, dof)
+
+
+def test_t_draws_keep_the_model_s_covariance() -> None:
+    draws = np.log1p(t_model(10.0).sample(np.random.default_rng(11), 2_000, 100)).reshape(-1, 3)
+    n = len(draws)
+    sd = np.sqrt(np.diag(COVARIANCE))
+    assert np.all(np.abs(draws.mean(axis=0) - MEAN) < 4 * sd / math.sqrt(n))
+    # A t with 10 degrees of freedom has excess kurtosis 1, which widens the standard error
+    # of a variance by about a fifth over the normal's.
+    se = np.sqrt((COVARIANCE**2 + np.outer(sd**2, sd**2)) / n)
+    assert np.all(np.abs(np.cov(draws.T) - COVARIANCE) < 6 * se)
+
+
+def test_t_draws_follow_the_t_distribution() -> None:
+    # Standardised to the t's own scale, a fund's draws are t with 4 degrees of freedom,
+    # whose distribution function has a closed form: P(T > 2) = 0.0580582.
+    dof = 4.0
+    draws = np.log1p(t_model(dof).sample(np.random.default_rng(12), 2_000, 100))[..., 1]
+    t = (draws - MEAN[1]) / math.sqrt(COVARIANCE[1, 1] * (dof - 2) / dof)
+    x = 2.0 / math.sqrt(1 + 2.0**2 / 4)
+    tail = 0.5 - 3 / 8 * x * (1 - 2.0**2 / (12 * (1 + 2.0**2 / 4)))
+    assert tail == pytest.approx(0.0580582, abs=1e-7)
+    share = np.mean(t > 2.0)
+    assert abs(share - tail) < 4 * math.sqrt(tail * (1 - tail) / t.size)
+
+
+def test_every_fund_shares_a_day_s_t_mixing_draw() -> None:
+    # With independent funds, a day far out in one fund's tail is far out in the
+    # others' more often than independence would allow: the mixing draw is shared.
+    cov = np.diag([1e-4, 1e-4, 1e-4])
+    draws = np.log1p(
+        StudentTModel(TICKERS, np.zeros(3), cov, 3.0).sample(np.random.default_rng(13), 1_000, 200)
+    ).reshape(-1, 3)
+    big = np.abs(draws) > 3 * 0.01
+    both = np.mean(big[:, 0] & big[:, 1])
+    assert both > 3 * np.mean(big[:, 0]) * np.mean(big[:, 1])
+    # Yet the funds are uncorrelated: their signs agree half the time.
+    agree = np.mean(np.sign(draws[:, 0]) == np.sign(draws[:, 1]))
+    assert abs(agree - 0.5) < 4 * math.sqrt(0.25 / len(draws))
+
+
+def test_the_t_log_likelihood_is_a_density() -> None:
+    # In one dimension it integrates to 1.
+    mean, cov = np.array([0.001]), np.array([[1e-4]])
+    grid = np.linspace(-0.5, 0.5, 4001)
+    density = [math.exp(log_likelihood(np.array([[x]]), mean, cov, 3.0)) for x in grid]
+    assert np.trapezoid(density, grid) == pytest.approx(1.0, abs=2e-4)
+
+
+def test_the_normal_log_likelihood_is_the_sum_of_normal_densities() -> None:
+    returns = daily_returns(n=50)
+    logs = np.log1p(returns.to_numpy())
+    mean = logs.mean(axis=0)
+    cov = np.cov(logs.T)
+    inverse = np.linalg.inv(cov)
+    expected = sum(
+        -0.5 * (3 * math.log(2 * math.pi) + math.log(np.linalg.det(cov)) + d @ inverse @ d)
+        for d in logs - mean
+    )
+    assert log_likelihood(logs, mean, cov) == pytest.approx(expected, rel=1e-12)
+    # Many degrees of freedom: all but normal.
+    assert log_likelihood(logs, mean, cov, 1e8) == pytest.approx(expected, rel=1e-6)
+
+
+def test_the_likelihood_refuses_a_singular_covariance() -> None:
+    cov = np.array([[1e-4, 2e-4, 0.0], [2e-4, 4e-4, 0.0], [0.0, 0.0, 1e-4]])
+    with pytest.raises(ValueError, match="singular"):
+        log_likelihood(np.zeros((4, 3)), np.zeros(3), cov, 5.0)
+
+
+def test_fit_recovers_the_degrees_of_freedom() -> None:
+    draws = t_model(5.0).sample(np.random.default_rng(14), 1, 20_000)[0]
+    fitted = StudentTModel.fit(pd.DataFrame(draws, columns=list(TICKERS)))
+    assert fitted.dof == pytest.approx(5.0, abs=0.5)
+    np.testing.assert_allclose(fitted.mean, np.log1p(draws).mean(axis=0), rtol=1e-12)
+
+
+def test_normal_returns_fit_many_degrees_of_freedom() -> None:
+    draws = model().sample(np.random.default_rng(15), 1, 20_000)[0]
+    fitted = StudentTModel.fit(pd.DataFrame(draws, columns=list(TICKERS)))
+    assert fitted.dof > 50
+
+
+def test_the_fitted_dof_is_the_likeliest() -> None:
+    draws = t_model(6.0).sample(np.random.default_rng(16), 1, 3_000)[0]
+    logs = np.log1p(draws)
+    mean, cov = logs.mean(axis=0), np.cov(logs.T)
+    dof = fit_dof(logs, mean, cov)
+    best = log_likelihood(logs, mean, cov, dof)
+    for nearby in (dof * 0.999, dof * 1.001, dof * 0.9, dof * 1.1):
+        assert log_likelihood(logs, mean, cov, nearby) < best
+
+
+def test_a_given_dof_is_kept() -> None:
+    assert StudentTModel.fit(daily_returns(), dof=7.5).dof == 7.5
+
+
+@pytest.mark.parametrize("dof", [2.0, 1.5, math.inf, math.nan, True, "5"])
+def test_the_t_needs_more_than_two_degrees_of_freedom(dof) -> None:
+    with pytest.raises(ValueError, match="dof"):
+        t_model(dof)
 
 
 def prices() -> pd.DataFrame:
