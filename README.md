@@ -3,17 +3,17 @@
 Monte Carlo simulation and risk analysis of multi-asset portfolios, on real
 daily market data.
 
-> **Status:** early. The data ingestion and the returns and covariance engine
-> are done; the parts below are built in order, and every figure this README
+> **Status:** early. The data ingestion, the returns and covariance engine and
+> a multivariate normal Monte Carlo are done; the parts below are built in order, and every figure this README
 > gives comes from a run of the committed code.
 
 ## The data is real
 
 The prices are **real market data**: daily closes and dividends of eight
 exchange-traded funds from Yahoo Finance, fetched with
-[yfinance](https://github.com/ranaroussi/yfinance). Nothing is generated or
-simulated at this stage; the simulations to come resample or model these
-returns, and say which.
+[yfinance](https://github.com/ranaroussi/yfinance). The simulations fit a
+model to these returns and draw from it, and say which model; every comparison
+with history is with these prices.
 
 | Ticker | Fund | Asset class |
 | --- | --- | --- |
@@ -155,13 +155,70 @@ correlation with any other fund is 0.21. Ledoit-Wolf shrinks the sample
 covariance by only 0.5% (5,469 days for 8 funds leaves little estimation error),
 bringing its condition number from 234 to 193.
 
+## Monte Carlo simulation
+
+[`montecarlo.py`](src/portfolio_risk/montecarlo.py) fits a model to the funds'
+daily total returns, draws paths of daily returns for all of them at once, and
+follows a portfolio held at fixed weights and rebalanced to them at every close.
+
+**Multivariate normal.** Daily log returns are normal, with the sample mean and
+covariance of the historical log returns, and each day is drawn independently.
+Log returns, so every path compounds to a positive price. The model has no fat
+tails, no volatility clustering and no autocorrelation; comparing its paths with
+history shows what that costs.
+
+Runs are reproducible: the seed fixes every path, and path `i` is the same
+whatever number of paths is asked for (they are drawn in blocks of 1,000, each
+from its own stream spawned from the seed).
+
+```bash
+python -m portfolio_risk.montecarlo --weights equal --horizon 252 --paths 10000 --seed 0
+```
+
+`--weights` also takes e.g. `SPY=0.6,AGG=0.4` (long only, adding up to 1).
+For the eight funds in equal weights, 10,000 one-year (252-day) paths, seed 0
+([`results/montecarlo-normal.json`](results/montecarlo-normal.json)), against the
+same portfolio's history, 4 January 2005 to 30 September 2026:
+
+| Portfolio return | Mean | Sd | Excess kurtosis | 0.1% quantile | 1% quantile | 5% quantile | Median | Chance of a loss |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Daily, simulated | 0.035% | 0.874% | 0.01 | -2.61% | -1.97% | -1.39% | 0.03% | 48.7% |
+| Daily, history | 0.035% | 0.871% | 12.92 | -5.07% | -2.41% | -1.25% | 0.06% | 45.5% |
+| 252 days, simulated | 9.19% | 15.15% | 0.21 | -28.34% | -21.15% | -13.93% | 8.26% | 28.8% |
+| 252 days, history | 9.07% | 11.92% | 1.64 | -31.82% | -25.49% | -14.62% | 9.65% | 16.1% |
+
+The history rows take every day, and every window of 252 days (one starting on
+each day, 5,218 in all). The windows overlap, so they hold only about 21
+independent years, and their low quantiles are 2008 more than anything else.
+
+What the comparison shows:
+
+- **The daily tails are far too thin.** The model matches the mean and the
+  standard deviation, but history's worst day in a thousand is a 5.07% loss and
+  the model's 2.61%. History's excess kurtosis is 12.9; a normal's is 0.
+- **The yearly spread is too wide.** Simulated one-year returns have a standard
+  deviation of 15.2% against history's 11.9%, and a loss in 28.8% of years
+  against 16.1% of windows (4 of 21 full calendar years). The model draws days
+  independently, but the portfolio's daily returns are negatively
+  autocorrelated (lag one -0.097, like each fund's above), so part of each move
+  reverses: measured over 252-day windows, history's volatility is 0.862 of the
+  square-root-scaled daily figure.
+- The mean agrees: 9.19% simulated against 9.28% expected from the fitted
+  moments (`(mean of exp(mu + var / 2)) ^ 252 - 1`), 0.6 standard errors apart,
+  and 9.07% over the historical windows.
+
+Over seeds 0 to 5 the simulated one-year figures move by less than the gaps
+above: standard deviation 15.0% to 15.4%, 1% quantile -21.2% to -22.3%, chance
+of a loss 27.6% to 28.9%; the daily 0.1% quantile -2.61% to -2.62%.
+
 ## Parts
 
 | Part | State |
 | --- | --- |
 | Data ingestion via yfinance, cached to CSV with a manifest | done |
 | Returns and covariance engine, annualisation helpers | done |
-| Monte Carlo: multivariate normal, Student-t, stationary block bootstrap | to come |
+| Monte Carlo: multivariate normal | done |
+| Monte Carlo: Student-t, stationary block bootstrap | to come |
 | Risk metrics: Sharpe, Sortino, drawdown, VaR, CVaR, downside deviation | to come |
 | Scenarios: allocation mixes, rebalancing, stress periods | to come |
 | Efficient frontier, mean-variance, risk parity and CVaR optimisation | to come |
