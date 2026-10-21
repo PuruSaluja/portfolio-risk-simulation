@@ -14,6 +14,7 @@ from portfolio_risk.montecarlo import (
     NormalModel,
     StudentTModel,
     _factor,
+    block_lengths,
     check_weights,
     describe,
     fit_dof,
@@ -22,6 +23,7 @@ from portfolio_risk.montecarlo import (
     horizon_returns,
     log_likelihood,
     main,
+    mean_block_length,
     optimal_block_length,
     parse_weights,
     simulate,
@@ -369,6 +371,18 @@ def test_the_t_fits_beside_a_fund_that_never_varies() -> None:
     assert fitted.dof == pytest.approx(StudentTModel.fit(others).dof, rel=1e-6)
     sample = fitted.sample(np.random.default_rng(0), 10, 20)
     np.testing.assert_allclose(sample[..., 3], 0.0003, rtol=1e-12)
+
+
+def test_block_lengths_leave_out_funds_that_never_vary() -> None:
+    returns = pd.DataFrame(
+        {"A": ar1(0.3, 2_000, 61) / 100, "B": 0.0002, "C": ar1(0.6, 2_000, 62) / 100}
+    )
+    lengths = block_lengths(returns)
+    assert lengths["B"] is None
+    assert lengths["A"] == optimal_block_length(returns["A"].to_numpy())
+    assert mean_block_length(lengths) == pytest.approx((lengths["A"] + lengths["C"]) / 2)
+    assert BootstrapModel.fit(returns).mean_block == mean_block_length(lengths)
+    assert mean_block_length({"A": None}) == 1.0
 
 
 def test_fit_recovers_the_degrees_of_freedom() -> None:
@@ -763,3 +777,20 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         assert captured.out == ""
         assert captured.err.startswith("error: ") and message in captured.err
         assert "Traceback" not in captured.err
+
+
+def test_the_default_run_takes_a_fund_that_never_varies(tmp_path: Path, capsys) -> None:
+    flat = prices()
+    flat.loc[flat["ticker"] == "BBB", "close"] = 80.0
+    cache = tmp_path / "prices.csv"
+    write_cache(flat, cache, start=date(2023, 1, 1), end=date(2024, 12, 31), source="t")
+    out = tmp_path / "mc.json"
+    argv = ["--cache", str(cache), "--paths", "1000", "--horizon", "21", "--json", str(out)]
+    assert main(argv) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    normal, t, boot = written["models"]
+    assert boot["parameters"]["block_lengths"]["BBB"] is None
+    assert boot["parameters"]["mean_block"] == boot["parameters"]["block_lengths"]["AAA"]
+    assert 2 < t["parameters"]["dof"] <= 1000
+    # Half in a fund that never moves: every model's daily spread is half AAA's.
+    assert normal["daily"]["sd"] == pytest.approx(written["historical"]["daily"]["sd"], rel=0.05)

@@ -323,6 +323,24 @@ def optimal_block_length(returns: pd.Series | np.ndarray) -> float:
     return float(min(max(length, 1.0), b_max))
 
 
+def block_lengths(returns: pd.DataFrame) -> dict[str, float | None]:
+    """Each fund's Politis-White length; ``None`` for one whose returns never vary.
+
+    Any block length reproduces returns that never vary, so such a fund has no say.
+    """
+    values = _returns_frame(returns)
+    return {
+        str(t): None if np.ptp(column) == 0.0 else optimal_block_length(column)
+        for t, column in zip(returns.columns, values.T, strict=True)
+    }
+
+
+def mean_block_length(lengths: Mapping[str, float | None]) -> float:
+    """The mean of the funds' lengths, leaving out funds that never vary; 1 if none vary."""
+    varying = [length for length in lengths.values() if length is not None]
+    return float(np.mean(varying)) if varying else 1.0
+
+
 @dataclass(frozen=True, eq=False)
 class BootstrapModel:
     """The stationary bootstrap of Politis and Romano (1994) over the historical days.
@@ -367,7 +385,7 @@ class BootstrapModel:
         """The daily returns as they are; by default the funds' mean Politis-White length."""
         values = _returns_frame(returns)
         if mean_block is None:
-            mean_block = float(np.mean([optimal_block_length(c) for c in values.T]))
+            mean_block = mean_block_length(block_lengths(returns))
         return cls(tuple(str(t) for t in returns.columns), values, mean_block)
 
     def indices(self, rng: np.random.Generator, paths: int, horizon: int) -> np.ndarray:
@@ -553,8 +571,8 @@ def fit_model(spec: str, daily: pd.DataFrame) -> tuple[Model, dict[str, Any]]:
         normal = log_likelihood(logs, model.mean, model.covariance)
         return model, {"dof": model.dof, "likelihood_ratio_against_normal": 2 * (with_t - normal)}
     if not colon:
-        lengths = {str(t): optimal_block_length(daily[t]) for t in daily.columns}
-        model = BootstrapModel.fit(daily, float(np.mean(list(lengths.values()))))
+        lengths = block_lengths(daily)
+        model = BootstrapModel.fit(daily, mean_block_length(lengths))
         return model, {"mean_block": model.mean_block, "block_lengths": lengths}
     try:
         mean_block = float(block)
