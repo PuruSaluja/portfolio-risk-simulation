@@ -4,16 +4,16 @@ Monte Carlo simulation and risk analysis of multi-asset portfolios, on real
 daily market data.
 
 > **Status:** early. The data ingestion, the returns and covariance engine and
-> a multivariate normal Monte Carlo are done; the parts below are built in order, and every figure this README
+> the Monte Carlo simulation are done; the parts below are built in order, and every figure this README
 > gives comes from a run of the committed code.
 
 ## The data is real
 
 The prices are **real market data**: daily closes and dividends of eight
 exchange-traded funds from Yahoo Finance, fetched with
-[yfinance](https://github.com/ranaroussi/yfinance). The simulations fit a
-model to these returns and draw from it, and say which model; every comparison
-with history is with these prices.
+[yfinance](https://github.com/ranaroussi/yfinance). The simulations model
+or resample these returns, and say which; every comparison with history is with
+these prices.
 
 | Ticker | Fund | Asset class |
 | --- | --- | --- |
@@ -160,32 +160,67 @@ bringing its condition number from 234 to 193.
 [`montecarlo.py`](src/portfolio_risk/montecarlo.py) fits a model to the funds'
 daily total returns, draws paths of daily returns for all of them at once, and
 follows a portfolio held at fixed weights and rebalanced to them at every close.
+Three models, each answering for an assumption the one before makes:
 
-**Multivariate normal.** Daily log returns are normal, with the sample mean and
-covariance of the historical log returns, and each day is drawn independently.
-Log returns, so every path compounds to a positive price. The model has no fat
-tails, no volatility clustering and no autocorrelation; comparing its paths with
-history shows what that costs.
+- **Multivariate normal.** Daily log returns are normal, with the sample mean
+  and covariance of the historical log returns, and each day is drawn
+  independently. Log returns, so every path compounds to a positive price. No
+  fat tails, no volatility clustering, no autocorrelation.
+- **Multivariate Student-t.** The same mean and covariance, but t-shaped, with
+  the degrees of freedom of greatest likelihood (the mean and covariance held
+  at the sample's, so only the tails change). Every fund on a day shares one
+  draw of the t's mixing variable, so a violent day is violent for all of them.
+  Days are still independent. The likelihood matches scipy's `multivariate_t`
+  to about 1e-15, and the fitted degrees of freedom scipy's optimiser to 7e-9.
+- **Stationary block bootstrap** (Politis and Romano, 1994). Paths are built
+  from blocks of consecutive historical days, whole days at a time so the funds
+  keep the moves they made together; each block starts on a random day and its
+  length is geometric with a chosen mean, wrapping from the last day to the
+  first. The returns are the real ones, with their tails, and within a block
+  their autocorrelation and volatility clustering. By default the mean length
+  is the funds' average of the length Politis and White (2004, with the 2009
+  correction) choose for each; the tests check it against the closed form for
+  autoregressive and moving-average series.
 
-Runs are reproducible: the seed fixes every path, and path `i` is the same
-whatever number of paths is asked for (they are drawn in blocks of 1,000, each
-from its own stream spawned from the seed).
+Runs are reproducible: the seed fixes every path, every model draws from the
+same seed, and path `i` is the same whatever number of paths is asked for (they
+are drawn in blocks of 1,000, each from its own stream spawned from the seed).
 
 ```bash
-python -m portfolio_risk.montecarlo --weights equal --horizon 252 --paths 10000 --seed 0
+python -m portfolio_risk.montecarlo --weights equal --horizon 252 --paths 10000 --seed 0 \
+    --model normal --model t --model bootstrap --model bootstrap:21
 ```
 
-`--weights` also takes e.g. `SPY=0.6,AGG=0.4` (long only, adding up to 1).
-For the eight funds in equal weights, 10,000 one-year (252-day) paths, seed 0
-([`results/montecarlo-normal.json`](results/montecarlo-normal.json)), against the
-same portfolio's history, 4 January 2005 to 30 September 2026:
+`--weights` also takes e.g. `SPY=0.6,AGG=0.4` (long only, adding up to 1);
+`--model` defaults to `normal`, `t` and `bootstrap`, and `bootstrap:<days>` sets
+the mean block length.
 
-| Portfolio return | Mean | Sd | Excess kurtosis | 0.1% quantile | 1% quantile | 5% quantile | Median | Chance of a loss |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Daily, simulated | 0.035% | 0.874% | 0.01 | -2.61% | -1.97% | -1.39% | 0.03% | 48.7% |
-| Daily, history | 0.035% | 0.871% | 12.92 | -5.07% | -2.41% | -1.25% | 0.06% | 45.5% |
-| 252 days, simulated | 9.19% | 15.15% | 0.21 | -28.34% | -21.15% | -13.93% | 8.26% | 28.8% |
-| 252 days, history | 9.07% | 11.92% | 1.64 | -31.82% | -25.49% | -14.62% | 9.65% | 16.1% |
+### Results
+
+The eight funds in equal weights, 10,000 one-year (252-day) paths, seed 0
+([`results/montecarlo.json`](results/montecarlo.json)), against the same
+portfolio's history, 4 January 2005 to 30 September 2026. The t fit has 4.12
+degrees of freedom (likelihood ratio against the normal 12,375, for one extra
+parameter). Politis and White's lengths run from 1.0 day (GLD, whose
+autocorrelations are all insignificant) to 13.3 (AGG), 7.9 on average.
+
+| Daily return | Sd | Excess kurtosis | 0.1% quantile | 1% quantile | 99% quantile |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| History | 0.871% | 12.92 | -5.07% | -2.41% | 2.35% |
+| Normal | 0.874% | 0.01 | -2.61% | -1.97% | 2.09% |
+| Student-t | 0.874% | 15.07 | -4.15% | -2.24% | 2.39% |
+| Bootstrap, mean block 7.9 days | 0.872% | 12.86 | -5.10% | -2.43% | 2.36% |
+
+| 252-day return | Mean | Sd | 0.1% quantile | 1% quantile | 5% quantile | Median | Chance of a loss |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| History | 9.07% | 11.92% | -31.82% | -25.49% | -14.62% | 9.65% | 16.1% |
+| Normal | 9.19% | 15.15% | -28.34% | -21.15% | -13.93% | 8.26% | 28.8% |
+| Student-t | 9.18% | 15.13% | -29.71% | -21.62% | -13.67% | 8.18% | 28.8% |
+| Bootstrap, mean block 7.9 days | 9.20% | 13.53% | -32.60% | -21.21% | -12.47% | 8.83% | 24.7% |
+| Bootstrap, 1 day | 8.89% | 14.83% | -30.46% | -21.06% | -13.51% | 7.93% | 28.3% |
+| Bootstrap, 21 days | 9.07% | 12.90% | -31.90% | -22.07% | -12.06% | 8.99% | 22.5% |
+| Bootstrap, 63 days | 8.84% | 12.31% | -38.13% | -24.17% | -12.27% | 9.21% | 20.7% |
+| Bootstrap, 252 days | 8.82% | 12.05% | -32.93% | -25.17% | -13.52% | 9.25% | 17.3% |
 
 The history rows take every day, and every window of 252 days (one starting on
 each day, 5,218 in all). The windows overlap, so they hold only about 21
@@ -193,23 +228,46 @@ independent years, and their low quantiles are 2008 more than anything else.
 
 What the comparison shows:
 
-- **The daily tails are far too thin.** The model matches the mean and the
-  standard deviation, but history's worst day in a thousand is a 5.07% loss and
-  the model's 2.61%. History's excess kurtosis is 12.9; a normal's is 0.
-- **The yearly spread is too wide.** Simulated one-year returns have a standard
-  deviation of 15.2% against history's 11.9%, and a loss in 28.8% of years
-  against 16.1% of windows (4 of 21 full calendar years). The model draws days
-  independently, but the portfolio's daily returns are negatively
-  autocorrelated (lag one -0.097, like each fund's above), so part of each move
-  reverses: measured over 252-day windows, history's volatility is 0.862 of the
-  square-root-scaled daily figure.
-- The mean agrees: 9.19% simulated against 9.28% expected from the fitted
+- **Assuming normality makes the daily tails far too thin.** The normal matches
+  the mean and the standard deviation, but history's worst day in a thousand is
+  a 5.07% loss and the normal's 2.61%. The t gets most of the way (4.15%), and
+  the bootstrap, drawing real days, all of it (5.10%). The t's excess kurtosis
+  is unstable, 11.0 to 20.1 over seeds 0 to 5, because at 4.12 degrees of
+  freedom a t's fourth moment barely exists (its excess kurtosis is
+  6 / (dof - 4) = 52).
+- **Fat tails alone do not change the yearly picture.** Drawn independently, 252
+  t days add up to nearly the same one-year distribution as 252 normal days
+  (standard deviation 15.1% against 15.2%, chance of a loss 28.8% for both), and
+  so do 252 independently drawn real days (the 1-day bootstrap, 14.8%).
+- **What the yearly picture needs is the dependence between days.** The
+  portfolio's daily returns are negatively autocorrelated (lag one -0.097, like
+  each fund's above), so part of each move reverses: measured over 252-day
+  windows, history's volatility is 0.862 of the square-root-scaled daily
+  figure. Any model that draws days independently overstates one-year risk: the
+  normal's standard deviation is 15.2% against history's 11.9%, and it puts a
+  loss in 28.8% of years against 16.1% of windows (4 of 21 full calendar years).
+  Blocks keep that dependence: the standard deviation falls from 14.8% with
+  1-day blocks to 13.5% at the Politis-White length, 12.9% at 21 days and 12.1%
+  at 252. Politis and White choose blocks for the variance of a sample mean, and
+  7.9 days keeps the short-lag reversals but not the longer ones.
+- **Long blocks agree with history partly because they are history.** With a
+  mean block of 252 days a one-year path is often a single stretch of the data,
+  so the bootstrap's 1% quantile (-25.2%) and chance of a loss (17.3%) land near
+  the historical windows' (-25.5%, 16.1%) largely by replaying them; with only
+  about 21 independent years, it cannot show a year the data does not hold.
+- The means agree: the normal's 9.19% against 9.28% expected from the fitted
   moments (`(mean of exp(mu + var / 2)) ^ 252 - 1`), 0.6 standard errors apart,
-  and 9.07% over the historical windows.
+  and 9.07% over the historical windows. The 1-day bootstrap's 8.89% is 2.6
+  standard errors below its exact expectation, `(1 + mean daily return) ^ 252 -
+  1` = 9.28%, at seed 0; over seeds 0 to 9 the gap averages -0.11 standard
+  errors.
 
-Over seeds 0 to 5 the simulated one-year figures move by less than the gaps
-above: standard deviation 15.0% to 15.4%, 1% quantile -21.2% to -22.3%, chance
-of a loss 27.6% to 28.9%; the daily 0.1% quantile -2.61% to -2.62%.
+Over seeds 0 to 5 every one-year figure above moves by less than the gaps
+between models. The standard deviations run 15.0% to 15.4% (normal), 15.0% to
+15.3% (t), 13.4% to 13.7% (Politis-White bootstrap) and 11.8% to 12.1%
+(252-day blocks); the chances of a loss 27.6% to 28.8%, 27.5% to 28.9%, 24.2%
+to 25.7% and 17.3% to 17.8%. The daily 0.1% quantiles: normal -2.61% to
+-2.62%, t -4.14% to -4.21%, bootstrap -5.10% throughout.
 
 ## Parts
 
@@ -217,8 +275,7 @@ of a loss 27.6% to 28.9%; the daily 0.1% quantile -2.61% to -2.62%.
 | --- | --- |
 | Data ingestion via yfinance, cached to CSV with a manifest | done |
 | Returns and covariance engine, annualisation helpers | done |
-| Monte Carlo: multivariate normal | done |
-| Monte Carlo: Student-t, stationary block bootstrap | to come |
+| Monte Carlo: multivariate normal, Student-t, stationary block bootstrap | done |
 | Risk metrics: Sharpe, Sortino, drawdown, VaR, CVaR, downside deviation | to come |
 | Scenarios: allocation mixes, rebalancing, stress periods | to come |
 | Efficient frontier, mean-variance, risk parity and CVaR optimisation | to come |
