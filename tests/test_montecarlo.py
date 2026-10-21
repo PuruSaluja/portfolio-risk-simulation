@@ -10,6 +10,7 @@ import pytest
 from portfolio_risk.data import COLUMNS, write_cache
 from portfolio_risk.montecarlo import (
     BLOCK,
+    BootstrapModel,
     NormalModel,
     StudentTModel,
     check_weights,
@@ -19,6 +20,7 @@ from portfolio_risk.montecarlo import (
     horizon_returns,
     log_likelihood,
     main,
+    optimal_block_length,
     parse_weights,
     simulate,
 )
@@ -362,6 +364,191 @@ def test_a_given_dof_is_kept() -> None:
 def test_the_t_needs_more_than_two_degrees_of_freedom(dof) -> None:
     with pytest.raises(ValueError, match="dof"):
         t_model(dof)
+
+
+def bootstrap(n=50, mean_block=5.0) -> BootstrapModel:
+    # Day i's returns are i / 1e5 and i / 1e4, so each draw names the day it came from.
+    days = np.arange(n, dtype="float64")
+    return BootstrapModel(("A", "B"), np.column_stack([days / 1e5, days / 1e4]), mean_block)
+
+
+def test_the_bootstrap_draws_whole_historical_days() -> None:
+    boot = bootstrap()
+    index = boot.indices(np.random.default_rng(20), 300, 40)
+    draws = boot.sample(np.random.default_rng(20), 300, 40)
+    np.testing.assert_array_equal(draws, boot.returns[index])
+    assert index.min() == 0 and index.max() == 49
+
+
+def test_blocks_run_on_through_consecutive_days_and_wrap() -> None:
+    boot = bootstrap(n=50, mean_block=5.0)
+    index = boot.indices(np.random.default_rng(21), 2_000, 100)
+    steps = np.diff(index, axis=1) % 50
+    continued = steps == 1
+    # A block ends with chance 1 / 5 on each day; a new block can land on the next day
+    # by chance (1 in 50), so a few new blocks look like continuations.
+    share = 1 - continued.mean()
+    expected = 0.2 * (1 - 1 / 50)
+    assert abs(share - expected) < 4 * math.sqrt(expected * (1 - expected) / continued.size)
+    # The last day runs on into the first.
+    wrapped = (index[:, :-1] == 49) & (index[:, 1:] == 0)
+    assert wrapped.sum() > 0.5 * (index[:, :-1] == 49).sum()
+
+
+def test_block_lengths_are_geometric_with_the_mean_asked_for() -> None:
+    boot = bootstrap(n=10_000, mean_block=8.0)
+    index = boot.indices(np.random.default_rng(22), 500, 2_000)
+    # Interior runs only: the first and last of each path are cut by its ends.
+    lengths = []
+    for row in index:
+        breaks = np.flatnonzero(np.diff(row) != 1) + 1
+        lengths.extend(np.diff(breaks))
+    lengths = np.array(lengths)
+    assert abs(lengths.mean() - 8.0) < 4 * math.sqrt(8.0 * 7.0 / len(lengths))
+
+
+def test_every_day_is_equally_likely() -> None:
+    index = bootstrap(n=20, mean_block=3.0).indices(np.random.default_rng(23), 2_000, 50)
+    counts = np.bincount(index.ravel(), minlength=20)
+    assert counts.min() > 0.9 * counts.mean() and counts.max() < 1.1 * counts.mean()
+
+
+def test_with_blocks_of_one_day_wealth_matches_independent_draws() -> None:
+    returns = daily_returns(n=300)
+    boot = BootstrapModel.fit(returns, mean_block=1.0)
+    w = np.array([0.5, 0.25, 0.25])
+    sim = simulate(boot, dict(zip(TICKERS, w, strict=True)), 40, 20_000, seed=24)
+    wealth = 1 + sim.horizon_returns
+    expected = (1 + (returns.to_numpy() @ w).mean()) ** 40
+    assert abs(wealth.mean() - expected) < 4 * wealth.std(ddof=1) / math.sqrt(len(wealth))
+    index = boot.indices(np.random.default_rng(0), 100, 40)
+    assert (np.diff(index, axis=1) % 300 == 1).mean() < 0.01
+
+
+def test_the_bootstrap_by_default_takes_the_funds_mean_block_length() -> None:
+    # Funds with different autocorrelation, so their lengths differ.
+    columns = [ar1(phi, 2_000, 60 + i) / 100 for i, phi in enumerate([0.0, 0.3, 0.6])]
+    returns = pd.DataFrame(np.column_stack(columns), columns=list(TICKERS))
+    expected = np.mean([optimal_block_length(returns[t]) for t in TICKERS])
+    assert BootstrapModel.fit(returns).mean_block == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"mean_block": 0.5}, "mean_block"),
+        ({"mean_block": 51}, "mean_block"),
+        ({"mean_block": math.nan}, "mean_block"),
+        ({"mean_block": True}, "mean_block"),
+        ({"returns": np.zeros((1, 2))}, "at least 2 days"),
+        ({"returns": np.zeros((5, 3))}, "for 2 funds"),
+        ({"returns": np.full((5, 2), -1.0)}, "above -100%"),
+        ({"tickers": ("A", "A")}, "each named once"),
+    ],
+)
+def test_a_bootstrap_that_cannot_be_drawn_is_refused(kwargs, message) -> None:
+    args = {"tickers": ("A", "B"), "returns": bootstrap().returns, "mean_block": 5.0} | kwargs
+    with pytest.raises(ValueError, match=message):
+        BootstrapModel(**args)
+
+
+def ar1(phi: float, n: int, seed: int) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    noise = rng.standard_normal(n + 1_000)
+    x = np.empty_like(noise)
+    x[0] = noise[0]
+    for i in range(1, len(x)):
+        x[i] = phi * x[i - 1] + noise[i]
+    return x[1_000:]
+
+
+def test_the_block_length_matches_theory_for_an_ar1() -> None:
+    # For an AR(1) with coefficient phi, G / g = 2 phi / (1 - phi^2), so the optimal
+    # stationary-bootstrap length is (2 phi / (1 - phi^2)) ^ (2/3) * n ^ (1/3).
+    n = 100_000
+    for phi, seed in [(0.5, 30), (0.3, 31)]:
+        theory = (2 * phi / (1 - phi**2)) ** (2 / 3) * n ** (1 / 3)
+        assert optimal_block_length(ar1(phi, n, seed)) == pytest.approx(theory, rel=0.15)
+
+
+def test_a_lag_one_autocorrelation_just_above_significance_counts() -> None:
+    # An MA(1) whose lag-one autocorrelation is 1.5 times the significance threshold,
+    # 2 sqrt(log10(n) / n), about 2.3 standard errors from it and from twice it.
+    n = 250_000
+    rho = 1.5 * 2 * math.sqrt(math.log10(n) / n)
+    theta = (1 - math.sqrt(1 - 4 * rho**2)) / (2 * rho)
+    noise = np.random.default_rng(40).standard_normal(n + 1)
+    theory = (2 * theta / (1 + theta) ** 2) ** (2 / 3) * n ** (1 / 3)
+    assert optimal_block_length(noise[1:] + theta * noise[:-1]) == pytest.approx(theory, rel=0.15)
+
+
+def test_insignificant_early_lags_do_not_end_the_search() -> None:
+    # Autocorrelated at lag 3 only: lags 1 and 2 are insignificant, but the search
+    # needs five insignificant lags in a row. G / g = 6 theta / (1 + theta)^2.
+    n, theta = 100_000, 0.5
+    noise = np.random.default_rng(41).standard_normal(n + 3)
+    theory = (6 * theta / (1 + theta) ** 2) ** (2 / 3) * n ** (1 / 3)
+    assert optimal_block_length(noise[3:] + theta * noise[:-3]) == pytest.approx(theory, rel=0.15)
+
+
+def reference_block_length(x: np.ndarray) -> float:
+    """Politis and White's formula written out with two-sided sums, as in the paper."""
+    n = len(x)
+    d = x - x.mean()
+
+    def r(k):
+        return np.dot(d[: n - abs(k)], d[abs(k) :]) / n
+
+    k_n = max(5, math.ceil(math.sqrt(math.log10(n))))
+    m_max = math.ceil(math.sqrt(n)) + k_n
+    c = 2 * math.sqrt(math.log10(n) / n)
+    m_hat = next(
+        (m for m in range(m_max + 1) if all(abs(r(m + j) / r(0)) < c for j in range(1, k_n + 1))),
+        m_max,
+    )
+    big_m = min(2 * m_hat, m_max)
+    if big_m == 0:
+        return 1.0
+
+    def flat_top(t):
+        return 1.0 if abs(t) <= 0.5 else max(2 * (1 - abs(t)), 0.0)
+
+    g = sum(flat_top(k / big_m) * r(k) for k in range(-big_m, big_m + 1))
+    big_g = sum(flat_top(k / big_m) * abs(k) * r(k) for k in range(-big_m, big_m + 1))
+    d_sb = 2 * g**2
+    b = (2 * big_g**2 / d_sb) ** (1 / 3) * n ** (1 / 3)
+    return min(max(b, 1.0), math.ceil(min(3 * math.sqrt(n), n / 3)))
+
+
+@pytest.mark.parametrize(("phi", "n", "seed"), [(0.4, 300, 50), (0.7, 500, 51), (-0.3, 400, 52)])
+def test_the_block_length_follows_the_formula_on_short_series(phi, n, seed) -> None:
+    # Short series leave the autocovariances past the significant lags noisy, so the
+    # flat-top weights on them change the answer.
+    x = ar1(phi, n, seed)
+    assert optimal_block_length(x) == pytest.approx(reference_block_length(x), rel=1e-12)
+
+
+def test_uncorrelated_returns_need_no_blocks() -> None:
+    noise = np.random.default_rng(32).standard_normal(10_000)
+    assert optimal_block_length(noise) == 1.0
+
+
+def test_the_block_length_is_capped() -> None:
+    # Differenced noise has a long-run variance of zero, so the formula's length has no
+    # end; it stops at min(3 sqrt(n), n / 3).
+    noise = np.random.default_rng(33).standard_normal(1_001)
+    assert optimal_block_length(np.diff(noise)) == math.ceil(3 * math.sqrt(1_000))
+
+
+def test_the_block_length_refuses_what_it_cannot_measure() -> None:
+    with pytest.raises(ValueError, match="needs more than"):
+        optimal_block_length(np.arange(10.0))
+    with pytest.raises(ValueError, match="never vary"):
+        optimal_block_length(np.zeros(100))
+    with pytest.raises(ValueError, match="NaN"):
+        optimal_block_length(np.r_[np.ones(99), np.nan])
+    with pytest.raises(ValueError, match="one series"):
+        optimal_block_length(np.zeros((100, 2)))
 
 
 def prices() -> pd.DataFrame:

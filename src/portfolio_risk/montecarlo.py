@@ -14,6 +14,11 @@ every fund at once, so the funds move together as they did in the data.
     only the shape changes: fatter tails, set by the degrees of freedom of greatest
     likelihood (``fit_dof``; ``log_likelihood`` gives the normal for comparison). Days
     are still drawn independently.
+``BootstrapModel``
+    The stationary bootstrap: paths are made of blocks of consecutive historical days,
+    of random length with mean ``mean_block``, so the simulated returns are the real
+    ones, with their tails, and within a block their autocorrelation and volatility
+    clustering. ``optimal_block_length`` chooses the mean length by Politis and White.
 
 ``simulate`` draws ``paths`` paths of ``horizon`` days for a portfolio held at fixed
 weights and rebalanced to them at every close, so a day's portfolio return is the
@@ -234,7 +239,120 @@ class StudentTModel(NormalModel):
         return np.expm1(self.mean + (z @ self._factor.T) * np.sqrt((self.dof - 2) / mixing))
 
 
-Model = NormalModel
+def optimal_block_length(returns: pd.Series | np.ndarray) -> float:
+    """The stationary bootstrap's mean block length for one series, by Politis and White.
+
+    Politis and White (2004, "Automatic block-length selection for the dependent
+    bootstrap"), with the correction of Patton, Politis and White (2009): the length
+    that minimises the error of the bootstrap's variance of the sample mean,
+    ``(G^2 / g^2) ^ (1/3) * n ^ (1/3)``, where ``g`` and ``G`` are the autocovariances
+    summed, and summed weighted by their lag, through a flat-top window up to twice
+    the last lag that is still significant. At least 1 day, at most
+    ``min(3 sqrt(n), n / 3)``.
+    """
+    values = np.asarray(returns, dtype="float64")
+    if values.ndim != 1:
+        raise ValueError("expected one series of returns")
+    n = len(values)
+    k_n = max(5, math.ceil(math.sqrt(math.log10(max(n, 1)))))
+    m_max = math.ceil(math.sqrt(n)) + k_n
+    if n <= m_max + k_n:
+        raise ValueError(f"needs more than {m_max + k_n} returns, got {n}")
+    if not np.isfinite(values).all():
+        raise ValueError("returns include NaN or infinite values")
+    if np.ptp(values) == 0.0:
+        raise ValueError("returns that never vary have no block length")
+    deviations = values - values.mean()
+    lags = m_max + k_n
+    autocovariance = np.array(
+        [np.dot(deviations[: n - k], deviations[k:]) / n for k in range(lags + 1)]
+    )
+    rho = autocovariance / autocovariance[0]
+    # The smallest m after which k_n autocorrelations in a row are insignificant.
+    threshold = 2.0 * math.sqrt(math.log10(n) / n)
+    insignificant = np.abs(rho) < threshold
+    m_hat = next((m for m in range(m_max + 1) if insignificant[m + 1 : m + k_n + 1].all()), m_max)
+    window = min(2 * m_hat, m_max)
+    b_max = math.ceil(min(3 * math.sqrt(n), n / 3))
+    if window == 0:
+        return 1.0
+    k = np.arange(1, window + 1)
+    flat_top = np.where(k / window <= 0.5, 1.0, 2.0 * (1.0 - k / window))
+    g = autocovariance[0] + 2.0 * np.sum(flat_top * autocovariance[1 : window + 1])
+    big_g = 2.0 * np.sum(flat_top * k * autocovariance[1 : window + 1])
+    # A long-run variance of zero (or below, from strongly negative autocorrelations)
+    # would need blocks without end; the cap stands in.
+    if g <= 0.0:
+        return float(b_max)
+    length = (big_g**2 / g**2) ** (1 / 3) * n ** (1 / 3)
+    return float(min(max(length, 1.0), b_max))
+
+
+@dataclass(frozen=True, eq=False)
+class BootstrapModel:
+    """The stationary bootstrap of Politis and Romano (1994) over the historical days.
+
+    A path is made of blocks of consecutive historical days, whole days at a time so
+    the funds keep the moves they made together. Each block starts on a day chosen at
+    random, and its length is geometric with mean ``mean_block`` (each day ends the
+    block with chance ``1 / mean_block``), wrapping from the last day to the first. The
+    simulated returns are the historical ones: their fat tails and skew, and within a
+    block their autocorrelation and volatility clustering. With ``mean_block`` 1 every
+    day is drawn independently.
+    """
+
+    tickers: tuple[str, ...]
+    returns: np.ndarray
+    mean_block: float
+
+    name = "bootstrap"
+
+    def __post_init__(self) -> None:
+        values = np.asarray(self.returns, dtype="float64")
+        k = len(self.tickers)
+        if k == 0 or len(set(self.tickers)) != k:
+            raise ValueError("needs at least one fund, each named once")
+        if values.ndim != 2 or values.shape[1] != k or len(values) < 2:
+            raise ValueError(f"needs at least 2 days of returns for {k} funds, not {values.shape}")
+        if not np.isfinite(values).all() or (values <= -1.0).any():
+            raise ValueError("returns must be finite and above -100%")
+        if (
+            isinstance(self.mean_block, bool)
+            or not isinstance(self.mean_block, int | float)
+            or not 1 <= self.mean_block <= len(values)
+        ):
+            raise ValueError(
+                f"mean_block must be a number from 1 to the {len(values)} days, "
+                f"not {self.mean_block!r}"
+            )
+        object.__setattr__(self, "returns", values)
+
+    @classmethod
+    def fit(cls, returns: pd.DataFrame, mean_block: float | None = None) -> BootstrapModel:
+        """The daily returns as they are; by default the funds' mean Politis-White length."""
+        values = _returns_frame(returns)
+        if mean_block is None:
+            mean_block = float(np.mean([optimal_block_length(c) for c in values.T]))
+        return cls(tuple(str(t) for t in returns.columns), values, mean_block)
+
+    def indices(self, rng: np.random.Generator, paths: int, horizon: int) -> np.ndarray:
+        """Which historical day each simulated day is, ``paths`` by ``horizon``."""
+        n = len(self.returns)
+        starts = rng.integers(0, n, (paths, horizon))
+        new_block = rng.random((paths, horizon)) < 1.0 / self.mean_block
+        steps = np.arange(horizon)
+        # For each day, the day its block began, and the historical day that block began
+        # on. A path's first day always begins one: before any other, ``began`` is 0.
+        began = np.maximum.accumulate(np.where(new_block, steps, 0), axis=1)
+        first = np.take_along_axis(starts, began, axis=1)
+        return (first + steps - began) % n
+
+    def sample(self, rng: np.random.Generator, paths: int, horizon: int) -> np.ndarray:
+        """Daily simple returns, ``paths`` by ``horizon`` days by fund."""
+        return self.returns[self.indices(rng, paths, horizon)]
+
+
+Model = NormalModel | BootstrapModel
 
 
 def _check_count(value: int, name: str) -> None:
