@@ -51,7 +51,8 @@ python -m portfolio_risk.data verify    # check the cache against its manifest
 
 `fetch` takes `--tickers`, `--start`, `--end` (inclusive, and before today in
 New York) and `--out`, and says whether the new file matches the manifest it
-replaces.
+replaces. When it does (same prices, same window), the manifest is left as it
+was, so fetching into a fresh clone changes no tracked file.
 [`data/prices.manifest.json`](data/prices.manifest.json) is the committed
 manifest, from a fetch on 2026-10-20: 5,470 trading days for each fund,
 3 January 2005 to 30 September 2026, every fund on every day (43,760 rows).

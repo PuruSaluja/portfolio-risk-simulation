@@ -449,23 +449,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             previous = None
             if manifest_path(args.out).exists():
                 try:
-                    previous = read_manifest(args.out)["sha256"]
+                    previous = read_manifest(args.out)
                 except DataError:
                     previous = None
             tickers = [t.strip() for t in args.tickers.split(",")]
             prices = fetch_prices(tickers, args.start, args.end)
-            manifest = write_cache(
-                prices,
-                args.out,
-                start=args.start,
-                end=args.end,
-                source=f"Yahoo Finance, via yfinance {yfinance.__version__}",
-            )
+            data = _csv_bytes(prices)
+            same = previous is not None and (
+                previous["sha256"],
+                previous["start"],
+                previous["end"],
+            ) == (hashlib.sha256(data).hexdigest(), args.start.isoformat(), args.end.isoformat())
+            if same:
+                # The manifest is left as it was, so a fetch of the same data (in a fresh
+                # clone, say, where only the manifest is committed) changes no tracked file.
+                _write_atomic(args.out, data)
+                manifest = previous
+            else:
+                manifest = write_cache(
+                    prices,
+                    args.out,
+                    start=args.start,
+                    end=args.end,
+                    source=f"Yahoo Finance, via yfinance {yfinance.__version__}",
+                )
             _print_summary(manifest)
             if previous is not None:
-                same = previous == manifest["sha256"]
                 print(
-                    "Same data as the previous manifest."
+                    "Same data as the previous manifest, which is left as it was."
                     if same
                     else "Differs from the previous manifest."
                 )

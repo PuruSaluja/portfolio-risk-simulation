@@ -491,6 +491,14 @@ def test_verify_reports_a_bad_cache_without_a_traceback(tmp_path: Path, capsys) 
     assert "Traceback" not in err
 
 
+def backdate_manifest(cache: Path) -> bytes:
+    """Give the manifest an old fetch time, so a rewrite shows even within one second."""
+    manifest = json.loads(manifest_path(cache).read_text(encoding="utf-8"))
+    manifest["fetched_at"] = "2000-01-01T00:00:00+00:00"
+    manifest_path(cache).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest_path(cache).read_bytes()
+
+
 def test_fetch_writes_the_cache_and_compares_with_the_previous_manifest(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
@@ -501,11 +509,43 @@ def test_fetch_writes_the_cache_and_compares_with_the_previous_manifest(
     assert main([*args, "--out", str(cache)]) == 0
     assert "SHA-256" in capsys.readouterr().out
     assert len(load_cache(cache)) == 18
+    first = backdate_manifest(cache)
     assert main([*args, "--out", str(cache)]) == 0
-    assert "Same data as the previous manifest." in capsys.readouterr().out
+    assert "Same data as the previous manifest" in capsys.readouterr().out
+    assert manifest_path(cache).read_bytes() == first  # fetched_at and all left alone
     frame.loc["2024-01-05", ("Close", "AAA")] = 99.0
     assert main([*args, "--out", str(cache)]) == 0
     assert "Differs from the previous manifest." in capsys.readouterr().out
+    assert manifest_path(cache).read_bytes() != first
+
+
+def test_fetching_the_same_data_into_a_fresh_clone_changes_only_the_untracked_cache(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    frame = yahoo_frame(("AAA", "BBB"))
+    monkeypatch.setattr(data, "fetch_prices", lambda tickers, start, end: fetch(frame, tickers))
+    cache = tmp_path / "prices.csv"
+    args = ["fetch", "--tickers", "AAA,BBB", "--start", "2024-01-01", "--end", "2024-01-12"]
+    assert main([*args, "--out", str(cache)]) == 0
+    committed = backdate_manifest(cache)
+    cache.unlink()  # as in a clone: the manifest is committed, the prices are not
+    assert main([*args, "--out", str(cache)]) == 0
+    assert manifest_path(cache).read_bytes() == committed
+    assert len(load_cache(cache)) == 18
+
+
+def test_a_new_window_rewrites_the_manifest_even_with_the_same_prices(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    frame = yahoo_frame(("AAA", "BBB"))
+    monkeypatch.setattr(data, "fetch_prices", lambda tickers, start, end: fetch(frame, tickers))
+    cache = tmp_path / "prices.csv"
+    args = ["fetch", "--tickers", "AAA,BBB", "--end", "2024-01-12", "--out", str(cache)]
+    assert main([*args, "--start", "2024-01-01"]) == 0
+    assert main([*args, "--start", "2023-12-30"]) == 0  # same prices, a wider window
+    assert "Differs from the previous manifest." in capsys.readouterr().out
+    assert read_manifest(cache)["start"] == "2023-12-30"
+    assert len(load_cache(cache)) == 18
 
 
 def test_fetch_reports_a_failed_download_without_a_traceback(
