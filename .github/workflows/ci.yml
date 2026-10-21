@@ -12,8 +12,11 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push cancels the run it supersedes. A push to main gets a
+# group of its own commit, so every commit on main is tested, however quickly the
+# next one follows (a group holds one pending run and cancels any other).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:

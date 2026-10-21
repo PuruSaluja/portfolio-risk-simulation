@@ -64,3 +64,10 @@ def test_ci_s_lowest_job_installs_pyproject_s_lower_bounds() -> None:
     lowest = [line for line in workflow.splitlines() if "pip install" in line and "==" in line]
     assert len(lowest) == 1
     assert dict(re.findall(r'"([a-z]+)==([0-9.]+)"', lowest[0])) == bounds
+
+
+def test_ci_never_cancels_the_run_of_a_commit_pushed_to_main() -> None:
+    # A concurrency group shared by pushes cancels a run when the next push lands.
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    groups = [line.strip() for line in workflow.splitlines() if line.strip().startswith("group:")]
+    assert groups == ["group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}"]
