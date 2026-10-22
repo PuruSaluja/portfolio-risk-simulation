@@ -337,7 +337,13 @@ def test_a_fund_that_never_varies_has_no_ratios(tmp_path: Path, capsys) -> None:
     bbb = json.loads(out.read_text(encoding="utf-8"))["series"]["BBB"]
     assert bbb["sharpe_ratio"] is None and bbb["sortino_ratio"] is None
     assert bbb["max_drawdown"]["depth"] == 0.0 and bbb["max_drawdown"]["peak"] is None
-    assert "BBB" in capsys.readouterr().out
+    printed = [line for line in capsys.readouterr().out.splitlines() if line.startswith("BBB")]
+    assert "never fell" in printed[0] and "not yet" not in printed[0]
+    # A return of exactly 0 is no loss, written 0 rather than minus 0.
+    for method in bbb["tail"]["99"].values():
+        for value in method.values():
+            assert value == 0.0 and math.copysign(1.0, value) == 1.0
+    assert "-0.00%" not in printed[1]
 
 
 def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:

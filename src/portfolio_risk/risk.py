@@ -174,10 +174,11 @@ def value_at_risk(returns: pd.Series, level: float = 0.95, method: Method = "his
     values = _values(returns, minimum=2 if method == "normal" else 1)
     if method == "historical":
         k = max(math.ceil(_tail_size(len(values), tail)), 1)
-        return float(-np.partition(values, k - 1)[k - 1])
+        # Adding 0 turns minus zero (a return of exactly 0) into zero.
+        return float(-np.partition(values, k - 1)[k - 1]) + 0.0
     if method == "normal":
         z = NormalDist().inv_cdf(tail)
-        return float(-(values.mean() + values.std(ddof=1) * z))
+        return float(-(values.mean() + values.std(ddof=1) * z)) + 0.0
     raise ValueError(f"method must be historical or normal, not {method!r}")
 
 
@@ -192,17 +193,17 @@ def expected_shortfall(
         whole = math.floor(size)
         lowest = np.sort(values)[: whole + 1]
         if whole == 0:
-            return float(-lowest[0])
+            return float(-lowest[0]) + 0.0
         total = lowest[:whole].sum()
         if size > whole:
             total += (size - whole) * lowest[whole]
         # A mean of returns at or below the value-at-risk return can come out a last bit
         # above it in floating point; it is never above it in fact.
-        return float(max(-total / size, -lowest[math.ceil(size) - 1]))
+        return float(max(-total / size, -lowest[math.ceil(size) - 1])) + 0.0
     if method == "normal":
         z = NormalDist().inv_cdf(tail)
         density = math.exp(-0.5 * z * z) / math.sqrt(2.0 * math.pi)
-        return float(-(values.mean() - values.std(ddof=1) * density / tail))
+        return float(-(values.mean() - values.std(ddof=1) * density / tail)) + 0.0
     raise ValueError(f"method must be historical or normal, not {method!r}")
 
 
@@ -311,12 +312,15 @@ def _print(result: dict[str, Any]) -> None:
     )
     for name, m in result["series"].items():
         dd = m["max_drawdown"]
+        if dd["depth"] == 0.0:
+            dates = f"{'never fell':32}"
+        else:
+            dates = f"{dd['peak'] or 'start':10} {dd['trough']:10} {dd['recovery'] or 'not yet':10}"
         print(
             f"{name:10} {m['compound_return']:>8.2%} {m['volatility']:>7.2%} "
             f"{_ratio(m['sharpe_ratio']):>7} {_ratio(m['sharpe_ratio_monthly']):>7} "
             f"{_ratio(m['sortino_ratio']):>7} {m['downside_deviation']:>8.2%} "
-            f"{dd['depth']:>8.2%}  {dd['peak'] or 'start':10} {dd['trough'] or '-':10} "
-            f"{dd['recovery'] or 'not yet':10}"
+            f"{dd['depth']:>8.2%}  {dates}"
         )
     levels = list(next(iter(result["series"].values()))["tail"])
     print("\nOne day's loss: value at risk / expected shortfall, historical (normal)")
