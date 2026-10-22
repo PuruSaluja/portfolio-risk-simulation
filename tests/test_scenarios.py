@@ -14,6 +14,7 @@ from portfolio_risk.scenarios import (
     _mix,
     backtest,
     main,
+    shuffled_gap,
     stress,
     summarise,
     window,
@@ -230,6 +231,68 @@ def test_summarise_annualises_with_the_periods_it_is_given() -> None:
     assert out["max_drawdown"] == pytest.approx((w / w.cummax().clip(lower=1) - 1).min())
 
 
+def reversing(seed: int, reversal: float, n: int = 2000) -> pd.DataFrame:
+    """Two funds whose every move is followed by a partial reversal (none if 0)."""
+    e = np.random.default_rng(seed).normal(0.0004, [0.02, 0.01], size=(n + 1, 2))
+    values = e[1:] - reversal * (e[:-1] - 0.0004)
+    return pd.DataFrame(values, index=pd.bdate_range("2010-01-01", periods=n), columns=["A", "B"])
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_a_gap_from_day_to_day_reversals_stands_outside_the_shuffles(seed) -> None:
+    out = shuffled_gap(reversing(seed, 0.5), {"A": 0.5, "B": 0.5}, ["daily", "monthly"], 40, 0, 252)
+    assert out["gap"] > out["shuffled_q95"] and out["shuffled_at_least_gap"] == 0
+    assert abs(out["shuffled_mean"]) < out["gap"] / 5
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_without_reversals_the_gap_is_among_the_shuffles(seed) -> None:
+    out = shuffled_gap(reversing(seed, 0.0), {"A": 0.5, "B": 0.5}, ["daily", "monthly"], 40, 0, 252)
+    assert out["shuffled_at_least_gap"] >= 5
+
+
+def test_the_gap_is_the_difference_in_compound_return_and_a_shuffle_moves_whole_days() -> None:
+    r = daily_returns(seed=9)
+    out = shuffled_gap(r, WEIGHTS, ["daily", "never"], 1, 7, 250.0)
+    daily, never = (summarise(backtest(r, WEIGHTS, rule), 250.0) for rule in ("daily", "never"))
+    assert out["gap"] == pytest.approx(daily["compound_return"] - never["compound_return"])
+    # One shuffle: each day's returns, all funds together, on the dates in order.
+    order = np.random.default_rng(7).permutation(len(r))
+    moved = pd.DataFrame(r.to_numpy()[order], index=r.index, columns=r.columns)
+    daily, never = (summarise(backtest(moved, WEIGHTS, rule), 250.0) for rule in ("daily", "never"))
+    expected = daily["compound_return"] - never["compound_return"]
+    for key in ("shuffled_mean", "shuffled_q05", "shuffled_q95"):
+        assert out[key] == pytest.approx(expected, rel=1e-12)
+    assert out["shuffled_at_least_gap"] == int(expected >= out["gap"])
+
+
+def test_the_same_seed_shuffles_the_same_way() -> None:
+    r = daily_returns(seed=10)
+    a = shuffled_gap(r, WEIGHTS, ["daily", "monthly"], 5, 3, 252)
+    assert shuffled_gap(r, WEIGHTS, ["daily", "monthly"], 5, 3, 252) == a
+    assert shuffled_gap(r, WEIGHTS, ["daily", "monthly"], 5, 4, 252) != a
+    assert a["shuffled_q05"] < a["shuffled_mean"] < a["shuffled_q95"]
+
+
+@pytest.mark.parametrize(
+    "rules, shuffles, seed, message",
+    [
+        (["monthly", "Monthly"], 5, 0, "two different rules"),
+        (["band:0.05", "band:.05"], 5, 0, "two different rules"),
+        (["daily"], 5, 0, "two different rules"),
+        (["daily", "monthly", "never"], 5, 0, "two different rules"),
+        (["daily", "weekly"], 5, 0, "a rule is"),
+        (["daily", "monthly"], 0, 0, "shuffles"),
+        (["daily", "monthly"], True, 0, "shuffles"),
+        (["daily", "monthly"], 5, -1, "seed"),
+        (["daily", "monthly"], 5, 1.5, "seed"),
+    ],
+)
+def test_a_bad_comparison_is_refused(rules, shuffles, seed, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        shuffled_gap(daily_returns(), WEIGHTS, rules, shuffles, seed, 252)
+
+
 def prices() -> pd.DataFrame:
     days = pd.bdate_range("2023-01-02", "2024-12-31")
     rng = np.random.default_rng(0)
@@ -299,6 +362,32 @@ def test_the_command_prints_and_writes_every_mix_rule_and_period(tmp_path: Path,
     )
 
 
+def test_the_command_compares_two_rules_with_the_days_shuffled(tmp_path: Path, capsys) -> None:
+    out = tmp_path / "s.json"
+    argv = ["--cache", str(cache(tmp_path)), "--json", str(out), "--mix", "equal"]
+    assert main([*argv, "--compare", "never, band:0.05", "--shuffles", "6", "--seed", "2"]) == 0
+    gaps = json.loads(out.read_text(encoding="utf-8"))["rebalancing_gap"]
+    assert gaps["rules"] == ["never", "band:0.05"] and gaps["shuffles"] == 6 and gaps["seed"] == 2
+    p = prices().pivot(index="date", columns="ticker", values="close")
+    returns = (p / p.shift(1) - 1).iloc[1:]
+    returns.index = pd.DatetimeIndex(returns.index)
+    per_year = len(returns) / ((returns.index[-1] - pd.Timestamp(p.index[0])).days / 365.25)
+    expected = shuffled_gap(
+        returns, {"AAA": 0.5, "BBB": 0.5}, ["never", "band:0.05"], 6, 2, per_year
+    )
+    for key, value in expected.items():
+        assert gaps["mixes"]["equal"][key] == pytest.approx(value, rel=1e-9, abs=1e-15)
+    assert "never over band:0.05" in capsys.readouterr().out
+    assert main([*argv, "--shuffles", "1"]) == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["rebalancing_gap"]["mixes"].keys() == {
+        "equal"
+    }
+    capsys.readouterr()
+    assert main([*argv, "--shuffles", "0"]) == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["rebalancing_gap"]["mixes"] == {}
+    assert "shuffles of them" not in capsys.readouterr().out
+
+
 def test_a_named_mix_may_be_written_in_any_case(tmp_path: Path) -> None:
     out = tmp_path / "s.json"
     argv = ["--cache", str(cache(tmp_path)), "--json", str(out), "--rule", "Daily"]
@@ -332,6 +421,10 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         (["--mix", "AAA=0.5,BBB=0.5", "--mix", "equal"], "AAA=0.5,BBB=0.5 and equal are the same"),
         (["--mix", "AAA=0.5,BBB=0.5", "--mix", "BBB=0.5,AAA=0.5"], "are the same mix"),
         (["--mix", "equty"], "a mix is equity, 60/40, equal, permanent or weights"),
+        (["--mix", "equal", "--compare", "daily,daily"], "two different rules"),
+        (["--mix", "equal", "--compare", "daily"], "two different rules"),
+        (["--mix", "equal", "--shuffles", "-1"], "shuffles"),
+        (["--mix", "equal", "--seed", "-1"], "seed"),
         (["--mix", "equal", "--rule", "fortnightly"], "a rule is"),
         (["--mix", "equal", "--period", "2023-03-04:2023-06-30"], "2023-03-04 is not a day"),
         (["--mix", "equal", "--period", "March"], "START:END"),

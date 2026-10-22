@@ -24,8 +24,13 @@ falls of the S&P 500, each from its closing high to its closing low (SPY's close
 peak and bottom on the same days). ``stress`` invests a mix at its targets at the
 close of a period's first day and follows it, under a rule, to the close of the last.
 
+``shuffled_gap`` asks whether the difference two rules make comes from the order of the
+days: it compares the gap between them on the days as they came with the gaps on the
+same days shuffled.
+
 ``python -m portfolio_risk.scenarios`` backtests every mix under every rule over the
-whole history and over each stress period, from the cache's daily total returns.
+whole history and over each stress period, from the cache's daily total returns, and
+the gap between two rules with the days in order and shuffled.
 """
 
 from __future__ import annotations
@@ -217,6 +222,60 @@ def stress(
     return _path(backtest(window(returns, start, end), weights, rule))
 
 
+def _check_comparison(rules: Sequence[str], shuffles: int, seed: int) -> None:
+    if len(rules) != 2 or _rule_key(rules[0]) == _rule_key(rules[1]):
+        raise ValueError(f"needs two different rules to compare, not {list(rules)!r}")
+    if isinstance(shuffles, bool) or not isinstance(shuffles, int) or shuffles < 1:
+        raise ValueError(f"shuffles must be a whole number of at least 1, not {shuffles!r}")
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError(f"seed must be a whole number of at least 0, not {seed!r}")
+
+
+def shuffled_gap(
+    returns: pd.DataFrame,
+    weights: Mapping[str, float],
+    rules: Sequence[str],
+    shuffles: int,
+    seed: int,
+    periods_per_year: float,
+) -> dict[str, Any]:
+    """How much more a year the first rule returns than the second, on the days in their
+    order and with the days shuffled ``shuffles`` times.
+
+    A shuffle keeps each day's returns (every fund's together) and the dates where they
+    are, so the calendar rules rebalance on the same closes; only which day's returns
+    fall on which date changes, which removes any dependence between one day and the
+    next. A gap that comes from that dependence stands outside the shuffled ones, which
+    centre on zero. The same seed shuffles the days the same ways for any mix.
+    """
+    _check_comparison(rules, shuffles, seed)
+
+    def gap(frame: pd.DataFrame) -> float:
+        first, second = (backtest(frame, weights, rule).returns for rule in rules)
+        return float(
+            ret.annualised_return(first, periods_per_year)
+            - ret.annualised_return(second, periods_per_year)
+        )
+
+    real = gap(returns)
+    rng = np.random.default_rng(seed)
+    values = returns.to_numpy()
+    shuffled = np.array(
+        [
+            gap(pd.DataFrame(values[rng.permutation(len(values))], returns.index, returns.columns))
+            for _ in range(shuffles)
+        ]
+    )
+    q05, q95 = np.quantile(shuffled, [0.05, 0.95])
+    return {
+        "gap": real,
+        "shuffled_mean": float(shuffled.mean()),
+        "shuffled_q05": float(q05),
+        "shuffled_q95": float(q95),
+        "shuffled_at_least_gap": int(np.sum(shuffled >= real)),
+    }
+
+
 def _mix(spec: str, tickers: Sequence[str]) -> dict[str, float]:
     """A named mix (any case), or weights such as ``SPY=0.6,AGG=0.4``."""
     name = spec.strip().lower()
@@ -248,8 +307,12 @@ def run(
     mixes: Sequence[str] = tuple(MIXES),
     rules: Sequence[str] = RULES,
     periods: Sequence[str] | None = None,
+    compare: Sequence[str] = ("daily", "monthly"),
+    shuffles: int = 40,
+    seed: int = 0,
 ) -> dict[str, Any]:
-    """Backtest every mix under every rule, over the history and each stress period.
+    """Backtest every mix under every rule, over the history and each stress period, and
+    compare two rules with the days in order and shuffled (none if ``shuffles`` is 0).
 
     Without ``periods``, the named stress periods that lie within the data; those that
     do not are listed as left out.
@@ -269,6 +332,9 @@ def run(
         if key in seen:
             raise ValueError(f"{seen[key]} and {spec} are the same mix")
         seen[key] = spec
+    if shuffles != 0:
+        # Checked before the backtests, so a bad argument does not wait for them.
+        _check_comparison(compare, shuffles, seed)
     index = pd.DatetimeIndex(daily.index)
     first_close = wide(prices, "close").dropna().index[0]
     if periods is None:
@@ -311,6 +377,17 @@ def run(
         "history": history,
         "stress": stressed,
         "stress_periods_left_out": left_out,
+        "rebalancing_gap": {
+            "rules": list(compare),
+            "shuffles": shuffles,
+            "seed": seed,
+            "mixes": {
+                spec: shuffled_gap(daily, w, compare, shuffles, seed, per_year)
+                for spec, w in weights.items()
+            }
+            if shuffles
+            else {},
+        },
     }
 
 
@@ -341,6 +418,19 @@ def _print(result: dict[str, Any]) -> None:
             print(f"  {spec:12}" + "".join(f" {by_rule[r]['return']:>10.2%}" for r in rules))
     if result["stress_periods_left_out"]:
         print("\noutside the data: " + ", ".join(result["stress_periods_left_out"]))
+    gaps = result["rebalancing_gap"]
+    if gaps["mixes"]:
+        first, second = gaps["rules"]
+        print(
+            f"\n{first} over {second}, compound return a year: with the days in order, "
+            f"and over {gaps['shuffles']} shuffles of them (seed {gaps['seed']})"
+        )
+        for spec, g in gaps["mixes"].items():
+            print(
+                f"  {spec:12} {g['gap'] * 100:>6.3f} pt; shuffled mean "
+                f"{g['shuffled_mean'] * 100:.3f}, 5-95% {g['shuffled_q05'] * 100:.3f} to "
+                f"{g['shuffled_q95'] * 100:.3f}, {g['shuffled_at_least_gap']} at least as large"
+            )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -366,6 +456,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="a named stress period or START:END; may be given more than once "
         "(default: the named periods within the data)",
     )
+    parser.add_argument(
+        "--compare",
+        default="daily,monthly",
+        help="two rules whose gap is compared with the days in order and shuffled "
+        "(default: daily,monthly)",
+    )
+    parser.add_argument(
+        "--shuffles", type=int, default=40, help="how many shuffles (default 40; 0 for none)"
+    )
+    parser.add_argument("--seed", type=int, default=0, help="seed for the shuffles (default 0)")
     parser.add_argument("--json", type=Path, help="also write the figures to this file")
     args = parser.parse_args(argv)
     try:
@@ -373,7 +473,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         sha256 = read_manifest(args.cache)["sha256"]
         result = {
             "cache_sha256": sha256,
-            **run(prices, args.mix or tuple(MIXES), args.rule or RULES, args.period),
+            **run(
+                prices,
+                args.mix or tuple(MIXES),
+                args.rule or RULES,
+                args.period,
+                [rule.strip() for rule in args.compare.split(",")],
+                args.shuffles,
+                args.seed,
+            ),
         }
         # Written before anything is printed, so a failure leaves no half-finished run.
         if args.json:
