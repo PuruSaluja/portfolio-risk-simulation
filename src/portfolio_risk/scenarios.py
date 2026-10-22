@@ -69,10 +69,10 @@ _CALENDAR = {"monthly": "M", "quarterly": "Q", "yearly": "Y"}
 
 
 def _band(rule: str) -> float | None:
-    """The band's width for a ``band:x`` rule, ``None`` for the others."""
-    name, colon, width = rule.partition(":")
+    """The band's width for a ``band:x`` rule, ``None`` for the others (any case)."""
+    name, colon, width = rule.strip().lower().partition(":")
     if name != "band" or not colon:
-        if rule in RULES[:5]:
+        if name in RULES[:5]:
             return None
         raise ValueError(
             f"a rule is daily, monthly, quarterly, yearly, never or band:<width>, not {rule!r}"
@@ -84,6 +84,13 @@ def _band(rule: str) -> float | None:
     if not 0.0 < value < 1.0:
         raise ValueError(f"the band's width must be between 0 and 1, not {width!r}")
     return value
+
+
+def _rule_key(rule: str) -> str:
+    """A rule in one spelling, so that ``Monthly`` and ``monthly``, or ``band:.05`` and
+    ``band:0.05``, are one rule."""
+    band = _band(rule)
+    return rule.strip().lower() if band is None else f"band:{band!r}"
 
 
 def _calendar_closes(index: pd.DatetimeIndex, rule: str) -> np.ndarray:
@@ -121,7 +128,10 @@ def backtest(returns: pd.DataFrame, weights: Mapping[str, float], rule: str) -> 
     """Follow a portfolio invested at ``weights`` through ``returns`` under ``rule``."""
     if not isinstance(returns, pd.DataFrame) or returns.shape[1] == 0 or len(returns) < 1:
         raise ValueError("expected a date-by-fund DataFrame with at least one day")
-    index = pd.DatetimeIndex(returns.index)
+    # Numbers read as dates would be nanoseconds from 1970, all in one month.
+    if not isinstance(returns.index, pd.DatetimeIndex):
+        raise ValueError("returns need a date index, one date per day")
+    index = returns.index
     if not index.is_monotonic_increasing or index.has_duplicates:
         raise ValueError("dates must be increasing and unique")
     values = returns.to_numpy(dtype="float64")
@@ -129,8 +139,9 @@ def backtest(returns: pd.DataFrame, weights: Mapping[str, float], rule: str) -> 
         raise ValueError("returns must be finite and above -100%")
     tickers = [str(t) for t in returns.columns]
     target = check_weights(weights, tickers)
-    band = _band(rule)
-    due = _calendar_closes(index, "never" if band is not None else rule)
+    key = _rule_key(rule)
+    band = _band(key)
+    due = _calendar_closes(index, "never" if band is not None else key)
     n = len(values)
     out = np.empty(n)
     after = np.empty_like(values)
@@ -207,7 +218,15 @@ def stress(
 
 
 def _mix(spec: str, tickers: Sequence[str]) -> dict[str, float]:
-    return parse_weights(MIXES.get(spec, spec), tickers)
+    """A named mix (any case), or weights such as ``SPY=0.6,AGG=0.4``."""
+    name = spec.strip().lower()
+    if name in MIXES:
+        return parse_weights(MIXES[name], tickers)
+    if "=" not in spec:
+        raise ValueError(
+            f"a mix is {', '.join(MIXES)} or weights such as SPY=0.6,AGG=0.4, not {spec!r}"
+        )
+    return parse_weights(spec, tickers)
 
 
 def _period(spec: str) -> tuple[str, date, date]:
@@ -239,12 +258,17 @@ def run(
     tickers = [str(t) for t in daily.columns]
     if not mixes or not rules:
         raise ValueError("needs at least one mix and one rule")
-    for names, what in ((mixes, "mix"), (rules, "rule")):
-        if len(set(names)) != len(names):
-            raise ValueError(f"a {what} is named twice")
+    if len(set(mixes)) != len(mixes):
+        raise ValueError("a mix is named twice")
+    if len({_rule_key(rule) for rule in rules}) != len(rules):
+        raise ValueError("a rule is named twice")
     weights = {spec: _mix(spec, tickers) for spec in mixes}
-    for rule in rules:
-        _band(rule)
+    seen: dict[tuple[float, ...], str] = {}
+    for spec, w in weights.items():
+        key = tuple(check_weights(w, tickers).tolist())
+        if key in seen:
+            raise ValueError(f"{seen[key]} and {spec} are the same mix")
+        seen[key] = spec
     index = pd.DatetimeIndex(daily.index)
     first_close = wide(prices, "close").dropna().index[0]
     if periods is None:

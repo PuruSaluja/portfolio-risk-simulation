@@ -149,6 +149,23 @@ def test_an_unknown_rule_is_refused(rule, message) -> None:
         backtest(daily_returns(), WEIGHTS, rule)
 
 
+def test_a_rule_is_one_rule_however_it_is_written() -> None:
+    r = daily_returns(seed=8)
+    pd.testing.assert_series_equal(
+        backtest(r, WEIGHTS, "Monthly ").returns, backtest(r, WEIGHTS, "monthly").returns
+    )
+    pd.testing.assert_series_equal(
+        backtest(r, WEIGHTS, "BAND:.05").turnover, backtest(r, WEIGHTS, "band:0.05").turnover
+    )
+
+
+def test_returns_without_dates_are_refused() -> None:
+    # Numbers taken as dates are nanoseconds from 1970, so no month would ever end.
+    r = daily_returns().reset_index(drop=True)
+    with pytest.raises(ValueError, match="date index"):
+        backtest(r, WEIGHTS, "monthly")
+
+
 def test_bad_returns_and_weights_are_refused() -> None:
     r = daily_returns()
     bad = r.copy()
@@ -282,6 +299,15 @@ def test_the_command_prints_and_writes_every_mix_rule_and_period(tmp_path: Path,
     )
 
 
+def test_a_named_mix_may_be_written_in_any_case(tmp_path: Path) -> None:
+    out = tmp_path / "s.json"
+    argv = ["--cache", str(cache(tmp_path)), "--json", str(out), "--rule", "Daily"]
+    assert main([*argv, "--mix", " EQUAL"]) == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["mixes"] == {
+        " EQUAL": {"AAA": 0.5, "BBB": 0.5}
+    }
+
+
 def test_named_periods_outside_the_data_are_listed_as_left_out(tmp_path: Path, capsys) -> None:
     out = tmp_path / "s.json"
     assert main(["--cache", str(cache(tmp_path)), "--mix", "equal", "--json", str(out)]) == 0
@@ -301,6 +327,11 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         ([], "no returns for EEM, EFA, IWM, SPY"),  # the named mixes need the eight funds
         (["--mix", "equal", "--mix", "equal"], "a mix is named twice"),
         (["--mix", "equal", "--rule", "never", "--rule", "never"], "a rule is named twice"),
+        (["--mix", "equal", "--rule", "band:0.05", "--rule", "band:.05"], "rule is named twice"),
+        (["--mix", "equal", "--rule", "Never", "--rule", "never"], "a rule is named twice"),
+        (["--mix", "AAA=0.5,BBB=0.5", "--mix", "equal"], "AAA=0.5,BBB=0.5 and equal are the same"),
+        (["--mix", "AAA=0.5,BBB=0.5", "--mix", "BBB=0.5,AAA=0.5"], "are the same mix"),
+        (["--mix", "equty"], "a mix is equity, 60/40, equal, permanent or weights"),
         (["--mix", "equal", "--rule", "fortnightly"], "a rule is"),
         (["--mix", "equal", "--period", "2023-03-04:2023-06-30"], "2023-03-04 is not a day"),
         (["--mix", "equal", "--period", "March"], "START:END"),
