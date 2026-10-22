@@ -3,9 +3,10 @@
 Monte Carlo simulation and risk analysis of multi-asset portfolios, on real
 daily market data.
 
-> **Status:** early. The data ingestion, the returns and covariance engine and
-> the Monte Carlo simulation are done; the parts below are built in order, and every figure this README
-> gives comes from a run of the committed code.
+> **Status:** in progress. The data ingestion, the returns and covariance
+> engine, the Monte Carlo simulation and the risk measures are done; the parts
+> below are built in order, and every figure this README gives comes from a run
+> of the committed code.
 
 ## The data is real
 
@@ -290,6 +291,91 @@ blocks, -32.1% to -38.1%), and the 1% quantiles of the normal, the t and the
 Politis-White bootstrap overlap (-21.2% to -22.5%), so the tables do not rank
 those models by them.
 
+## Risk measures
+
+[`risk.py`](src/portfolio_risk/risk.py) measures one series of returns:
+
+- **Sharpe ratio**: the mean return in excess of a risk-free rate over the
+  standard deviation, on a yearly scale.
+- **Downside deviation** and the **Sortino ratio**: the root mean square of
+  the shortfalls below a target (returns above it count as zero), over all
+  returns, and the mean excess over the target divided by it.
+- **Maximum drawdown**: the deepest fall of the wealth index from its highest
+  point so far, with the dates of the peak, the trough and the recovery. The
+  index starts at 1 before the first return, so a first-day loss counts.
+- **Value at risk** and **expected shortfall** (CVaR), historical and normal,
+  reported as positive losses. Historical value at risk is the lowest return
+  with at least 5% (or 1%) of returns at or below it; expected shortfall is the
+  mean of the worst 5% (1%), the boundary return counted in part when that is
+  not a whole number of returns (Acerbi and Tasche, 2002), so it is never below
+  value at risk. The normal figures come from the sample mean and standard
+  deviation.
+
+The tests check each measure against direct formulas and brute force, and a
+pandas recalculation on the real data agrees to 2e-17.
+
+```bash
+python -m portfolio_risk.risk --weights equal --risk-free 0 --json results/risk-metrics.json
+```
+
+**The Sharpe and Sortino ratios here are against a risk-free rate of zero**,
+so they are of total return, not excess over Treasury bills: `--risk-free`
+takes a constant annual rate, and a measured daily risk-free series comes with
+the factor-attribution part (the Ken French data library publishes one).
+Any positive rate would lower every ratio in the table.
+
+### Results
+
+From the daily total returns, 4 January 2005 to 30 September 2026 (5,469
+days), the eight funds and the equal-weight portfolio rebalanced daily
+([`results/risk-metrics.json`](results/risk-metrics.json)):
+
+| Series | Compound return | Volatility | Sharpe, daily | Sharpe, monthly | Sortino | Max drawdown | Peak | Trough | Recovered |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| SPY | 10.87% | 18.88% | 0.64 | 0.77 | 0.91 | -55.2% | 2007-10-09 | 2009-03-09 | 2012-08-16 |
+| IWM | 8.42% | 23.97% | 0.46 | 0.51 | 0.65 | -58.6% | 2007-07-13 | 2009-03-09 | 2011-02-08 |
+| EFA | 6.13% | 20.96% | 0.39 | 0.44 | 0.55 | -61.0% | 2007-10-31 | 2009-03-09 | 2014-06-06 |
+| EEM | 7.28% | 27.62% | 0.39 | 0.44 | 0.57 | -66.4% | 2007-10-31 | 2008-11-20 | 2017-09-19 |
+| AGG | 2.86% | 5.20% | 0.57 | 0.65 | 0.79 | -18.4% | 2020-08-04 | 2022-10-20 | not by 30 Sep 2026 |
+| TLT | 2.69% | 14.53% | 0.26 | 0.26 | 0.37 | -48.3% | 2020-08-04 | 2023-10-19 | not by 30 Sep 2026 |
+| GLD | 10.55% | 18.29% | 0.64 | 0.67 | 0.91 | -45.6% | 2011-08-22 | 2015-12-17 | 2020-07-29 |
+| VNQ | 6.63% | 28.38% | 0.37 | 0.41 | 0.53 | -73.1% | 2007-02-07 | 2009-03-06 | 2012-09-13 |
+| Equal weight | 8.22% | 13.83% | 0.64 | 0.75 | 0.92 | -38.3% | 2007-10-31 | 2008-11-20 | 2010-01-11 |
+
+| One day's loss | 95% VaR, historical | 95% VaR, normal | 99% VaR, historical | 99% VaR, normal | 99% CVaR, historical | 99% CVaR, normal |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| SPY | 1.75% | 1.91% | 3.46% | 2.72% | 5.09% | 3.12% |
+| IWM | 2.27% | 2.44% | 3.93% | 3.47% | 5.92% | 3.98% |
+| EFA | 1.94% | 2.14% | 3.81% | 3.04% | 5.71% | 3.49% |
+| EEM | 2.46% | 2.82% | 4.85% | 4.01% | 7.16% | 4.59% |
+| AGG | 0.45% | 0.53% | 0.80% | 0.75% | 1.33% | 0.86% |
+| TLT | 1.47% | 1.49% | 2.30% | 2.12% | 2.91% | 2.43% |
+| GLD | 1.80% | 1.85% | 3.18% | 2.63% | 4.46% | 3.02% |
+| VNQ | 2.35% | 2.90% | 5.46% | 4.12% | 8.17% | 4.72% |
+| Equal weight | 1.25% | 1.40% | 2.43% | 1.99% | 3.65% | 2.29% |
+
+What they show:
+
+- **A normal model gets the tail the wrong way round.** At 95% its value at risk
+  is larger than the historical one for every fund (by 1.7% for TLT to 23.5%
+  for VNQ): fat-tailed returns have more quiet days than a normal with the same
+  standard deviation. At 99% it is smaller for every fund, and the expected
+  shortfall, the mean of the worst 1% of days, is 0.58 (VNQ) to 0.83 (TLT) of
+  the historical one; for the portfolio, 2.29% against 3.65%, an understatement
+  of 37%. This is the daily form of the Monte Carlo section's finding.
+- **Diversification shows in the drawdown more than in the ratios.** The
+  equal-weight portfolio's Sharpe ratio (0.64) is SPY's and gold's, but its
+  deepest fall is -38.3% against SPY's -55.2%, and it was back at its high 552
+  trading days after its peak, where SPY took 1,224, EFA 1,660 and EEM 2,488.
+- **The bond funds' worst fall is the recent one.** AGG and TLT peaked on 4
+  August 2020 and fell 18.4% and 48.3% as rates rose; neither had recovered by
+  the end of the data, so the 2008 crisis is not the worst period for every
+  asset.
+- **The monthly Sharpe ratio is higher than the daily one** for every fund (by
+  2.5% for TLT to 20.7% for SPY): monthly returns are less volatile than the
+  square-root-scaled daily ones, as the returns section measures, so a ratio
+  scaled from daily data understates them.
+
 ## Parts
 
 | Part | State |
@@ -297,7 +383,7 @@ those models by them.
 | Data ingestion via yfinance, cached to CSV with a manifest | done |
 | Returns and covariance engine, annualisation helpers | done |
 | Monte Carlo: multivariate normal, Student-t, stationary block bootstrap | done |
-| Risk metrics: Sharpe, Sortino, drawdown, VaR, CVaR, downside deviation | to come |
+| Risk metrics: Sharpe, Sortino, drawdown, VaR, CVaR, downside deviation | done |
 | Scenarios: allocation mixes, rebalancing, stress periods | to come |
 | Efficient frontier, mean-variance, risk parity and CVaR optimisation | to come |
 | Fama-French factor attribution (Ken French data library) | to come |
