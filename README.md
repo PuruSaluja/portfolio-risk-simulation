@@ -410,7 +410,9 @@ python -m portfolio_risk.scenarios --json results/scenarios.json
 
 `--mix` takes a named mix or weights such as `SPY=0.6,AGG=0.4`, `--rule` a
 rule, and `--period` a named period or `START:END`; each may be given more than
-once, and a rule or mix given twice, in any spelling, is refused.
+once, and a rule or mix given twice, in any spelling, is refused. `--compare`
+(default `daily,monthly`) names two rules whose gap is measured again with
+the days shuffled, `--shuffles` times (default 40, from `--seed`, default 0).
 
 ### Results
 
@@ -466,11 +468,17 @@ What they show:
   mix left alone returned the least of its six (7.68%).
 - **Rebalancing daily returned more than monthly, quarterly or yearly for every
   mix**, by 0.11 (equity) to 0.50 (equal weight) points a year over monthly.
-  That fits the negative day-to-day autocorrelation measured above: selling
-  what rose today gains when part of the rise reverses. It is one history,
-  before costs, and daily rebalancing trades 48.6% to 81.5% of the portfolio a
-  year against 9.3% to 15.8% monthly, so the cost-aware backtest decides
-  whether any of it survives. A 5-point band traded 2.2% to 5.2% a year, close
+  The gap comes from the order of the days. Shuffling the days keeps each
+  day's returns together and the dates where they were, so only the dependence
+  between days is lost; over 40 shuffles (seed 0) the shuffled gaps average
+  -0.005 to 0.003 points by mix, their 95th percentiles are 0.039 to 0.107, and
+  none is as large as the real gap. Over seeds 0 to 4, 200 shuffles a mix, the
+  averages run -0.025 to 0.003 and still none is as large. That fits the
+  negative day-to-day autocorrelation measured above: selling what rose today
+  gains when part of the rise reverses. It is one history, before costs, and
+  daily rebalancing trades 48.6% to 81.5% of the portfolio a year against 9.3%
+  to 15.8% monthly, so the cost-aware backtest decides whether any of it
+  survives. A 5-point band traded 2.2% to 5.2% a year, close
   to yearly rebalancing (2.9% to 4.7%), and returned 8.41% for equal weight,
   the most of its six.
 - **Long Treasuries rose in every stress period but 2022**, and gold and AGG

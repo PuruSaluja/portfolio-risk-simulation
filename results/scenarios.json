@@ -1406,5 +1406,43 @@
       }
     }
   ],
-  "stress_periods_left_out": []
+  "stress_periods_left_out": [],
+  "rebalancing_gap": {
+    "rules": [
+      "daily",
+      "monthly"
+    ],
+    "shuffles": 40,
+    "seed": 0,
+    "mixes": {
+      "equity": {
+        "gap": 0.0010957356093583837,
+        "shuffled_mean": -5.1265575002009194e-05,
+        "shuffled_q05": -0.000520708103027711,
+        "shuffled_q95": 0.00038558043022238816,
+        "shuffled_at_least_gap": 0
+      },
+      "60/40": {
+        "gap": 0.0022068336000737737,
+        "shuffled_mean": -4.929922680349946e-05,
+        "shuffled_q05": -0.0006968697687079556,
+        "shuffled_q95": 0.0005844871529532818,
+        "shuffled_at_least_gap": 0
+      },
+      "equal": {
+        "gap": 0.004996337888185778,
+        "shuffled_mean": 2.8871472618448302e-05,
+        "shuffled_q05": -0.0009756830140522372,
+        "shuffled_q95": 0.0010714779279148458,
+        "shuffled_at_least_gap": 0
+      },
+      "permanent": {
+        "gap": 0.0027421954996666997,
+        "shuffled_mean": 3.295533557315239e-05,
+        "shuffled_q05": -0.0007920831881211336,
+        "shuffled_q95": 0.0008808495688222775,
+        "shuffled_at_least_gap": 0
+      }
+    }
+  }
 }
