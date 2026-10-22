@@ -372,9 +372,11 @@ What they show:
   the end of the data, so the 2008 crisis is not the worst period for every
   asset.
 - **The monthly Sharpe ratio is higher than the daily one** for every fund (by
-  2.5% for TLT to 20.7% for SPY): monthly returns are less volatile than the
-  square-root-scaled daily ones, as the returns section measures, so a ratio
-  scaled from daily data understates them.
+  2.5% for TLT to 20.7% for SPY), because the volatility differs more than the
+  mean. Square-root-scaled daily volatility is 1.06 to 1.32 times the monthly
+  figure (as the returns section measures), while the monthly mean times 12 is
+  0.84 to 0.99 of the daily mean times 252, so a ratio scaled from daily data
+  understates them.
 
 ## Scenarios: allocation mixes, rebalancing and stress periods
 
@@ -408,7 +410,7 @@ python -m portfolio_risk.scenarios --json results/scenarios.json
 
 `--mix` takes a named mix or weights such as `SPY=0.6,AGG=0.4`, `--rule` a
 rule, and `--period` a named period or `START:END`; each may be given more than
-once.
+once, and a rule or mix given twice, in any spelling, is refused.
 
 ### Results
 
@@ -458,10 +460,10 @@ What they show:
 
 - **Left alone, a mix stops being the mix.** Never rebalanced, the 60/40 ended
   88.5% SPY and 11.5% AGG, and the permanent portfolio 43.0% SPY and 40.4%
-  gold. Both returned more than any rebalanced version (8.91% and 8.14% a year)
-  with more volatility (12.52% and 9.43%), because they became riskier
-  portfolios. The equal-weight mix left alone returned the least of its six
-  (7.68%).
+  gold, the funds that grew fastest. Both returned more than any rebalanced
+  version (8.91% and 8.14% a year), and with more volatility (12.52% and
+  9.43%): they were no longer the portfolios they started as. The equal-weight
+  mix left alone returned the least of its six (7.68%).
 - **Rebalancing daily returned more than monthly, quarterly or yearly for every
   mix**, by 0.11 (equity) to 0.50 (equal weight) points a year over monthly.
   That fits the negative day-to-day autocorrelation measured above: selling
@@ -473,8 +475,8 @@ What they show:
   the most of its six.
 - **Long Treasuries rose in every stress period but 2022**, and gold and AGG
   in every one but 2020 and 2022. In 2008 long Treasuries gained 25.0% and
-  gold 23.9% while SPY fell 55.2%, and the permanent portfolio
-  lost 5.2% against the equity mix's 58.0%. In 2022 rising rates took TLT down
+  gold 23.9% while SPY fell 55.2%, and the permanent portfolio lost 5.2%
+  against the equity mix's 58.0%. In 2022 rising rates took TLT down
   29.3% and AGG 14.4% alongside equities, and the permanent portfolio lost
   19.0%, close to the 60/40's 20.4%.
 - **Within a crash, rebalancing buys the falling asset.** Over the 2008 window,
