@@ -207,14 +207,17 @@ def expected_shortfall(
     raise ValueError(f"method must be historical or normal, not {method!r}")
 
 
-def _defined(measure, *args) -> float | None:
+def or_none(measure, *args) -> float | None:
+    """``measure(*args)``, or ``None`` where the returns leave it undefined (a Sharpe
+    ratio of returns that never vary, a Sortino ratio of returns never below target)."""
     try:
         return measure(*args)
     except ValueError:
         return None
 
 
-def _label(value: Hashable | None) -> Any:
+def date_text(value: Hashable | None) -> Any:
+    """A date as ``YYYY-MM-DD`` for a JSON file; ``None`` and other labels as they are."""
     if value is None:
         return None
     return value.date().isoformat() if isinstance(value, pd.Timestamp) else value
@@ -247,14 +250,14 @@ def measures(
         }
     return {
         "volatility": float(ret.annualised_volatility(returns, periods_per_year)),
-        "sharpe_ratio": _defined(sharpe_ratio, returns, periods_per_year, risk_free),
+        "sharpe_ratio": or_none(sharpe_ratio, returns, periods_per_year, risk_free),
         "downside_deviation": downside_deviation(returns, periods_per_year, risk_free),
-        "sortino_ratio": _defined(sortino_ratio, returns, periods_per_year, risk_free),
+        "sortino_ratio": or_none(sortino_ratio, returns, periods_per_year, risk_free),
         "max_drawdown": {
             "depth": worst.depth,
-            "peak": _label(worst.peak),
-            "trough": _label(worst.trough),
-            "recovery": _label(worst.recovery),
+            "peak": date_text(worst.peak),
+            "trough": date_text(worst.trough),
+            "recovery": date_text(worst.recovery),
             "days_to_trough": worst.days_to_trough,
             "days_to_recovery": worst.days_to_recovery,
         },
@@ -283,7 +286,7 @@ def run(prices: pd.DataFrame, weights_text: str, risk_free: float = 0.0) -> dict
         out[name] = {
             "compound_return": float(ret.annualised_return(returns, per_year)),
             **measures(returns, ret.TRADING_DAYS_PER_YEAR, risk_free),
-            "sharpe_ratio_monthly": _defined(sharpe_ratio, monthly, 12, risk_free),
+            "sharpe_ratio_monthly": or_none(sharpe_ratio, monthly, 12, risk_free),
         }
     return {
         "first_return": daily.index[0].date().isoformat(),

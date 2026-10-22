@@ -194,7 +194,7 @@ def _path(test: Backtest) -> dict[str, Any]:
     return {
         "return": float(np.expm1(np.log1p(test.returns).sum())),
         "max_drawdown": worst.depth,
-        "trough": risk._label(worst.trough),
+        "trough": risk.date_text(worst.trough),
     }
 
 
@@ -205,10 +205,10 @@ def summarise(test: Backtest, periods_per_year: float) -> dict[str, Any]:
     return {
         "compound_return": float(ret.annualised_return(test.returns, periods_per_year)),
         "volatility": float(ret.annualised_volatility(test.returns, ret.TRADING_DAYS_PER_YEAR)),
-        "sharpe_ratio": risk._defined(risk.sharpe_ratio, test.returns, ret.TRADING_DAYS_PER_YEAR),
+        "sharpe_ratio": risk.or_none(risk.sharpe_ratio, test.returns, ret.TRADING_DAYS_PER_YEAR),
         "max_drawdown": worst.depth,
-        "max_drawdown_peak": risk._label(worst.peak),
-        "max_drawdown_trough": risk._label(worst.trough),
+        "max_drawdown_peak": risk.date_text(worst.peak),
+        "max_drawdown_trough": risk.date_text(worst.trough),
         "rebalances": test.rebalances,
         "turnover_per_year": float(test.turnover.sum() / years),
         "final_weights": {t: float(w) for t, w in test.weights.iloc[-1].items()},
