@@ -1,14 +1,19 @@
+import json
 import math
+from datetime import date
+from pathlib import Path
 from statistics import NormalDist
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from portfolio_risk.data import COLUMNS, write_cache
 from portfolio_risk.risk import (
     downside_deviation,
     drawdowns,
     expected_shortfall,
+    main,
     max_drawdown,
     measures,
     per_period_rate,
@@ -246,6 +251,7 @@ def test_a_data_frame_is_refused_for_one_series() -> None:
 def test_measures_gathers_every_figure_with_dates_as_text() -> None:
     r = random_returns(seed=7)
     out = measures(r, 252, risk_free=0.02)
+    assert out["volatility"] == pytest.approx(r.std() * math.sqrt(252), rel=1e-12)
     assert out["sharpe_ratio"] == sharpe_ratio(r, 252, 0.02)
     assert out["sortino_ratio"] == sortino_ratio(r, 252, 0.02)
     assert out["downside_deviation"] == downside_deviation(r, 252, 0.02)
@@ -256,3 +262,97 @@ def test_measures_gathers_every_figure_with_dates_as_text() -> None:
     assert out["tail"]["99"]["normal"]["expected_shortfall"] == expected_shortfall(
         r, 0.99, "normal"
     )
+
+
+def test_a_ratio_the_returns_leave_undefined_is_none_and_a_bad_rate_is_refused() -> None:
+    out = measures(series([0.01, 0.02, 0.0, 0.01]), 252)
+    assert out["sortino_ratio"] is None and out["sharpe_ratio"] is not None
+    assert measures(series([0.0] * 5), 252)["sharpe_ratio"] is None
+    with pytest.raises(ValueError, match="annual rate"):
+        measures(random_returns(), 252, risk_free=-1.0)
+
+
+def prices(flat_bbb=False) -> pd.DataFrame:
+    days = pd.bdate_range("2023-01-02", "2024-12-31")
+    rng = np.random.default_rng(0)
+    rows = []
+    for i, ticker in enumerate(["AAA", "BBB"]):
+        close = 50.0 * np.cumprod(1 + rng.normal(0.0003, 0.01 * (1 + i), len(days)))
+        if flat_bbb and ticker == "BBB":
+            close[:] = 80.0
+        for day, value in zip(days, close, strict=True):
+            rows.append((day.date(), ticker, float(value), 0.0, 0.0, 0.0, 1e6))
+    return pd.DataFrame(rows, columns=list(COLUMNS))
+
+
+def cache(tmp_path: Path, **kwargs) -> Path:
+    path = tmp_path / "prices.csv"
+    write_cache(prices(**kwargs), path, start=date(2023, 1, 1), end=date(2024, 12, 31), source="t")
+    return path
+
+
+def test_the_command_prints_and_writes_every_series(tmp_path: Path, capsys) -> None:
+    path = cache(tmp_path)
+    out = tmp_path / "results" / "risk.json"
+    argv = ["--cache", str(path), "--json", str(out), "--weights", "AAA=0.7,BBB=0.3"]
+    assert main(argv) == 0
+    printed = capsys.readouterr().out
+    assert "521 daily returns, 2023-01-03 to 2024-12-31; risk-free rate 0.00% a year" in printed
+    assert "AAA 70.0%, BBB 30.0%" in printed
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["series"].keys() == {"AAA", "BBB", "portfolio"}
+    assert written["weights"] == {"AAA": 0.7, "BBB": 0.3}
+    assert b"\r" not in out.read_bytes()
+    # The portfolio's figures are those of its daily returns, rebalanced every close.
+    p = prices().pivot(index="date", columns="ticker", values="close")
+    daily = (p / p.shift(1) - 1).iloc[1:]
+    portfolio = pd.Series((daily @ [0.7, 0.3]).to_numpy(), index=pd.DatetimeIndex(daily.index))
+    figures = written["series"]["portfolio"]
+    assert figures["sharpe_ratio"] == pytest.approx(sharpe_ratio(portfolio, 252), rel=1e-12)
+    assert figures["max_drawdown"]["depth"] == pytest.approx(max_drawdown(portfolio).depth)
+    monthly = (1 + portfolio).groupby(portfolio.index.to_period("M")).prod() - 1
+    assert figures["sharpe_ratio_monthly"] == pytest.approx(
+        monthly.mean() / monthly.std() * math.sqrt(12), rel=1e-12
+    )
+    years = (p.index[-1] - p.index[0]).days / 365.25
+    assert figures["compound_return"] == pytest.approx(
+        (1 + portfolio).prod() ** (1 / years) - 1, rel=1e-9
+    )
+
+
+def test_the_risk_free_rate_lowers_the_ratios(tmp_path: Path) -> None:
+    path = cache(tmp_path)
+    zero, five = tmp_path / "zero.json", tmp_path / "five.json"
+    assert main(["--cache", str(path), "--json", str(zero)]) == 0
+    assert main(["--cache", str(path), "--json", str(five), "--risk-free", "0.05"]) == 0
+    a = json.loads(zero.read_text(encoding="utf-8"))["series"]["AAA"]
+    b = json.loads(five.read_text(encoding="utf-8"))["series"]["AAA"]
+    assert b["sharpe_ratio"] < a["sharpe_ratio"] and b["sortino_ratio"] < a["sortino_ratio"]
+    assert b["max_drawdown"] == a["max_drawdown"] and b["tail"] == a["tail"]
+
+
+def test_a_fund_that_never_varies_has_no_ratios(tmp_path: Path, capsys) -> None:
+    out = tmp_path / "risk.json"
+    assert main(["--cache", str(cache(tmp_path, flat_bbb=True)), "--json", str(out)]) == 0
+    bbb = json.loads(out.read_text(encoding="utf-8"))["series"]["BBB"]
+    assert bbb["sharpe_ratio"] is None and bbb["sortino_ratio"] is None
+    assert bbb["max_drawdown"]["depth"] == 0.0 and bbb["max_drawdown"]["peak"] is None
+    assert "BBB" in capsys.readouterr().out
+
+
+def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
+    assert main(["--cache", str(tmp_path / "prices.csv")]) == 1
+    assert "manifest.json is missing" in capsys.readouterr().err
+    path = cache(tmp_path)
+    for argv, message in [
+        (["--weights", "AAA=2"], "add up to 1"),
+        (["--weights", "ZZZ=1"], "no returns for ZZZ"),
+        (["--risk-free", "-1"], "annual rate"),
+        (["--risk-free", "nan"], "annual rate"),
+        (["--json", str(tmp_path)], ""),  # a folder
+    ]:
+        assert main(["--cache", str(path), *argv]) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("error: ") and message in captured.err
+        assert "Traceback" not in captured.err

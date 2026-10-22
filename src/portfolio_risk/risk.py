@@ -28,13 +28,22 @@ the rate per period that compounds to them: ``(1 + annual) ** (1 / periods_per_y
     ``1 - 0.95`` would give. Normal: from the sample mean and standard deviation,
     ``-(mean + sd z)`` and ``-(mean - sd phi(z) / a)``, where ``z`` is the standard
     normal's ``a`` quantile.
+
+``python -m portfolio_risk.risk`` gives every measure for each fund in the price cache
+and for a portfolio of them rebalanced daily, from daily total returns, with the Sharpe
+ratio of calendar-month returns beside the daily one. ``--json`` writes the figures to
+a file.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import math
+import sys
 from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from statistics import NormalDist
 from typing import Any, Literal
 
@@ -42,6 +51,8 @@ import numpy as np
 import pandas as pd
 
 from portfolio_risk import returns as ret
+from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
+from portfolio_risk.montecarlo import check_weights, historical_portfolio_returns, parse_weights
 
 Method = Literal["historical", "normal"]
 LEVELS = (0.95, 0.99)
@@ -195,6 +206,13 @@ def expected_shortfall(
     raise ValueError(f"method must be historical or normal, not {method!r}")
 
 
+def _defined(measure, *args) -> float | None:
+    try:
+        return measure(*args)
+    except ValueError:
+        return None
+
+
 def _label(value: Hashable | None) -> Any:
     if value is None:
         return None
@@ -209,8 +227,12 @@ def measures(
 ) -> dict[str, Any]:
     """Every measure above for one series, the risk-free rate also the Sortino target.
 
-    Value at risk and expected shortfall are of a single period's return.
+    Value at risk and expected shortfall are of a single period's return. A ratio the
+    returns leave undefined (Sharpe for returns that never vary, Sortino for returns
+    that never fall below the target) is ``None``.
     """
+    # Checked here, so that a bad rate is refused rather than reported as undefined.
+    per_period_rate(risk_free, periods_per_year)
     worst = max_drawdown(returns)
     tails = {}
     for level in levels:
@@ -223,11 +245,10 @@ def measures(
             for method in ("historical", "normal")
         }
     return {
-        "compound_return": float(ret.annualised_return(returns, periods_per_year)),
         "volatility": float(ret.annualised_volatility(returns, periods_per_year)),
-        "sharpe_ratio": sharpe_ratio(returns, periods_per_year, risk_free),
+        "sharpe_ratio": _defined(sharpe_ratio, returns, periods_per_year, risk_free),
         "downside_deviation": downside_deviation(returns, periods_per_year, risk_free),
-        "sortino_ratio": sortino_ratio(returns, periods_per_year, risk_free),
+        "sortino_ratio": _defined(sortino_ratio, returns, periods_per_year, risk_free),
         "max_drawdown": {
             "depth": worst.depth,
             "peak": _label(worst.peak),
@@ -238,3 +259,112 @@ def measures(
         },
         "tail": tails,
     }
+
+
+def run(prices: pd.DataFrame, weights_text: str, risk_free: float = 0.0) -> dict[str, Any]:
+    """The measures of every fund and of a portfolio of them, from the cache's daily returns.
+
+    The portfolio is rebalanced to its weights at every close. Compound returns are per
+    calendar year, with the trading days the data holds a year; everything else on a
+    yearly scale uses 252 days, or 12 months for the Sharpe ratio of calendar-month
+    returns.
+    """
+    daily = ret.total_returns(prices)
+    tickers = [str(t) for t in daily.columns]
+    weights = parse_weights(weights_text, tickers)
+    series = {t: daily[t] for t in tickers}
+    series["portfolio"] = historical_portfolio_returns(daily, weights)
+    first_close = wide(prices, "close").dropna().index[0]
+    per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *daily.index]))
+    out = {}
+    for name, returns in series.items():
+        monthly = ret.compound(returns, "M")
+        out[name] = {
+            "compound_return": float(ret.annualised_return(returns, per_year)),
+            **measures(returns, ret.TRADING_DAYS_PER_YEAR, risk_free),
+            "sharpe_ratio_monthly": _defined(sharpe_ratio, monthly, 12, risk_free),
+        }
+    return {
+        "first_return": daily.index[0].date().isoformat(),
+        "last_return": daily.index[-1].date().isoformat(),
+        "daily_returns": len(daily),
+        "risk_free": risk_free,
+        "weights": dict(zip(tickers, check_weights(weights, tickers).tolist(), strict=True)),
+        "series": out,
+    }
+
+
+def _ratio(value: float | None) -> str:
+    return "-" if value is None else f"{value:.3f}"
+
+
+def _print(result: dict[str, Any]) -> None:
+    weights = ", ".join(f"{t} {w:.1%}" for t, w in result["weights"].items() if w > 0)
+    print(
+        f"{result['daily_returns']} daily returns, {result['first_return']} to "
+        f"{result['last_return']}; risk-free rate {result['risk_free']:.2%} a year\n"
+        f"portfolio, rebalanced daily: {weights}"
+    )
+    print(
+        f"\n{'':10} {'compound':>8} {'vol':>7} {'Sharpe':>7} {'Sh(m)':>7} {'Sortino':>7} "
+        f"{'downside':>8} {'max DD':>8}  {'peak':10} {'trough':10} {'recovered':10}"
+    )
+    for name, m in result["series"].items():
+        dd = m["max_drawdown"]
+        print(
+            f"{name:10} {m['compound_return']:>8.2%} {m['volatility']:>7.2%} "
+            f"{_ratio(m['sharpe_ratio']):>7} {_ratio(m['sharpe_ratio_monthly']):>7} "
+            f"{_ratio(m['sortino_ratio']):>7} {m['downside_deviation']:>8.2%} "
+            f"{dd['depth']:>8.2%}  {dd['peak'] or 'start':10} {dd['trough'] or '-':10} "
+            f"{dd['recovery'] or 'not yet':10}"
+        )
+    levels = list(next(iter(result["series"].values()))["tail"])
+    print("\nOne day's loss: value at risk / expected shortfall, historical (normal)")
+    print(f"{'':10}" + "".join(f" {level + '%':>29}" for level in levels))
+    for name, m in result["series"].items():
+        cells = []
+        for level in levels:
+            h, n = m["tail"][level]["historical"], m["tail"][level]["normal"]
+            cells.append(
+                f"{h['value_at_risk']:.2%} ({n['value_at_risk']:.2%}) / "
+                f"{h['expected_shortfall']:.2%} ({n['expected_shortfall']:.2%})"
+            )
+        print(f"{name:10}" + "".join(f" {c:>29}" for c in cells))
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m portfolio_risk.risk",
+        description="Risk and risk-adjusted return of each fund and a portfolio over the cache",
+    )
+    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument(
+        "--weights", default="equal", help='"equal" (the default) or e.g. SPY=0.6,AGG=0.4'
+    )
+    parser.add_argument(
+        "--risk-free",
+        type=float,
+        default=0.0,
+        help="compound annual risk-free rate, also the Sortino target (default 0)",
+    )
+    parser.add_argument("--json", type=Path, help="also write the figures to this file")
+    args = parser.parse_args(argv)
+    try:
+        prices = load_cache(args.cache)
+        sha256 = read_manifest(args.cache)["sha256"]
+        result = {"cache_sha256": sha256, **run(prices, args.weights, args.risk_free)}
+        # Written before anything is printed, so a failure leaves no half-finished run.
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.json, "w", encoding="utf-8", newline="\n") as out:
+                json.dump(result, out, indent=2, allow_nan=False)
+                out.write("\n")
+    except (DataError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    _print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
