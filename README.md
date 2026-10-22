@@ -4,9 +4,9 @@ Monte Carlo simulation and risk analysis of multi-asset portfolios, on real
 daily market data.
 
 > **Status:** in progress. The data ingestion, the returns and covariance
-> engine, the Monte Carlo simulation and the risk measures are done; the parts
-> below are built in order, and every figure this README gives comes from a run
-> of the committed code.
+> engine, the Monte Carlo simulation, the risk measures and the scenario engine
+> are done; the parts below are built in order, and every figure this README
+> gives comes from a run of the committed code.
 
 ## The data is real
 
@@ -376,6 +376,112 @@ What they show:
   square-root-scaled daily ones, as the returns section measures, so a ratio
   scaled from daily data understates them.
 
+## Scenarios: allocation mixes, rebalancing and stress periods
+
+[`scenarios.py`](src/portfolio_risk/scenarios.py) backtests a portfolio through
+the historical daily returns. It is invested at its target weights at the first
+close; each day every holding grows by its fund's return, so the weights drift,
+and a rule decides when they are reset to the targets: every close (`daily`,
+the fixed-weight portfolio of the sections above), the last close of each
+month, quarter or year, `never` (buy and hold), or `band:x`, whenever a weight
+has drifted more than `x` from its target. Turnover at a rebalance is half the
+weight traded. **No trading costs are charged here**; the cost-aware backtest
+comes later.
+
+Four mixes: **equity** (SPY, IWM, EFA and EEM, 25% each), **60/40** (SPY and
+AGG), **equal weight** (all eight funds) and **permanent** (SPY, TLT, GLD and
+AGG, 25% each, after Harry Browne's permanent portfolio, with AGG in place of
+his cash). Six stress periods, each an S&P 500 fall from its closing high to
+its closing low; SPY's own closes peak and bottom on the same days in the data.
+A stress test invests a mix at its targets at the close of the first day and
+follows it to the close of the last.
+
+The tests check buy-and-hold, monthly, quarterly and yearly paths against
+direct products of each fund's growth, and daily rebalancing against the
+fixed-weight portfolio. On the real data a separate recalculation of the
+daily, monthly and buy-and-hold compound returns agrees to 7e-16, and every
+buy-and-hold stress return matches the funds' growth over the window.
+
+```bash
+python -m portfolio_risk.scenarios --json results/scenarios.json
+```
+
+`--mix` takes a named mix or weights such as `SPY=0.6,AGG=0.4`, `--rule` a
+rule, and `--period` a named period or `START:END`; each may be given more than
+once.
+
+### Results
+
+4 January 2005 to 30 September 2026
+([`results/scenarios.json`](results/scenarios.json)); compound returns per
+calendar year, Sharpe ratios against a zero risk-free rate:
+
+| Mix | Rebalancing | Compound return | Volatility | Sharpe | Max drawdown | Rebalances | Turnover a year |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Equity | daily | 8.57% | 21.38% | 0.49 | -58.0% | 5,468 | 49.1% |
+| Equity | monthly | 8.46% | 21.34% | 0.49 | -58.5% | 260 | 10.0% |
+| Equity | quarterly | 8.43% | 21.32% | 0.49 | -58.4% | 86 | 5.3% |
+| Equity | yearly | 8.49% | 21.27% | 0.49 | -58.5% | 21 | 2.9% |
+| Equity | never (buy and hold) | 8.48% | 21.84% | 0.48 | -59.3% | 0 | 0.0% |
+| Equity | 5-point band | 8.54% | 21.37% | 0.49 | -58.0% | 8 | 2.2% |
+| 60/40 | daily | 8.09% | 11.53% | 0.73 | -34.7% | 5,468 | 48.6% |
+| 60/40 | monthly | 7.87% | 11.36% | 0.72 | -35.8% | 260 | 9.3% |
+| 60/40 | quarterly | 7.96% | 11.26% | 0.74 | -35.0% | 86 | 6.0% |
+| 60/40 | yearly | 8.02% | 11.09% | 0.75 | -33.7% | 21 | 3.2% |
+| 60/40 | never (buy and hold) | 8.91% | 12.52% | 0.75 | -33.3% | 0 | 0.0% |
+| 60/40 | 5-point band | 8.13% | 11.54% | 0.74 | -35.0% | 19 | 4.5% |
+| Equal weight | daily | 8.22% | 13.83% | 0.64 | -38.3% | 5,468 | 81.5% |
+| Equal weight | monthly | 7.72% | 13.52% | 0.62 | -39.4% | 260 | 15.8% |
+| Equal weight | quarterly | 7.85% | 13.26% | 0.64 | -38.3% | 86 | 9.3% |
+| Equal weight | yearly | 7.83% | 12.94% | 0.65 | -37.0% | 21 | 4.7% |
+| Equal weight | never (buy and hold) | 7.68% | 13.33% | 0.62 | -38.8% | 0 | 0.0% |
+| Equal weight | 5-point band | 8.41% | 13.73% | 0.66 | -38.0% | 12 | 5.1% |
+| Permanent | daily | 7.56% | 8.08% | 0.94 | -21.3% | 5,468 | 67.7% |
+| Permanent | monthly | 7.29% | 8.03% | 0.92 | -21.6% | 260 | 13.8% |
+| Permanent | quarterly | 7.35% | 8.04% | 0.92 | -21.6% | 86 | 8.0% |
+| Permanent | yearly | 7.45% | 8.03% | 0.94 | -21.3% | 21 | 4.2% |
+| Permanent | never (buy and hold) | 8.14% | 9.43% | 0.88 | -21.0% | 0 | 0.0% |
+| Permanent | 5-point band | 7.53% | 8.11% | 0.94 | -21.4% | 20 | 5.2% |
+
+Returns over each stress period, the mixes rebalanced monthly:
+
+| Period | Days | SPY | AGG | TLT | GLD | Equity | 60/40 | Equal weight | Permanent |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2008 financial crisis (2007-10-09 to 2009-03-09) | 355 | -55.2% | 7.4% | 25.0% | 23.9% | -58.0% | -35.8% | -38.6% | -5.2% |
+| 2011 euro debt crisis (2011-04-29 to 2011-10-03) | 108 | -18.6% | 5.3% | 34.5% | 5.6% | -25.9% | -9.6% | -11.2% | 5.9% |
+| 2015-16 China and oil (2015-05-21 to 2016-02-11) | 183 | -13.0% | 2.1% | 13.2% | 2.9% | -22.6% | -7.0% | -10.5% | 1.4% |
+| 2018 fourth quarter (2018-09-20 to 2018-12-24) | 65 | -19.3% | 1.6% | 4.5% | 5.0% | -18.0% | -11.2% | -9.2% | -2.2% |
+| 2020 COVID crash (2020-02-19 to 2020-03-23) | 23 | -33.7% | -1.3% | 14.2% | -3.6% | -34.5% | -21.5% | -22.2% | -6.9% |
+| 2022 inflation and rates (2022-01-03 to 2022-10-12) | 195 | -24.5% | -14.4% | -29.3% | -7.3% | -26.5% | -20.4% | -23.7% | -19.0% |
+
+What they show:
+
+- **Left alone, a mix stops being the mix.** Never rebalanced, the 60/40 ended
+  88.5% SPY and 11.5% AGG, and the permanent portfolio 43.0% SPY and 40.4%
+  gold. Both returned more than any rebalanced version (8.91% and 8.14% a year)
+  with more volatility (12.52% and 9.43%), because they became riskier
+  portfolios. The equal-weight mix left alone returned the least of its six
+  (7.68%).
+- **Rebalancing daily returned more than monthly, quarterly or yearly for every
+  mix**, by 0.11 (equity) to 0.50 (equal weight) points a year over monthly.
+  That fits the negative day-to-day autocorrelation measured above: selling
+  what rose today gains when part of the rise reverses. It is one history,
+  before costs, and daily rebalancing trades 48.6% to 81.5% of the portfolio a
+  year against 9.3% to 15.8% monthly, so the cost-aware backtest decides
+  whether any of it survives. A 5-point band traded 2.2% to 5.2% a year, close
+  to yearly rebalancing (2.9% to 4.7%), and returned 8.41% for equal weight,
+  the most of its six.
+- **Long Treasuries rose in every stress period but 2022**, and gold and AGG
+  in every one but 2020 and 2022. In 2008 long Treasuries gained 25.0% and
+  gold 23.9% while SPY fell 55.2%, and the permanent portfolio
+  lost 5.2% against the equity mix's 58.0%. In 2022 rising rates took TLT down
+  29.3% and AGG 14.4% alongside equities, and the permanent portfolio lost
+  19.0%, close to the 60/40's 20.4%.
+- **Within a crash, rebalancing buys the falling asset.** Over the 2008 window,
+  never rebalancing lost 30.2% for the 60/40 against 35.8% rebalanced monthly,
+  and 30.7% against 38.6% for equal weight. In the shorter windows the rules
+  differ by at most 1.5 points for any mix.
+
 ## Parts
 
 | Part | State |
@@ -384,7 +490,7 @@ What they show:
 | Returns and covariance engine, annualisation helpers | done |
 | Monte Carlo: multivariate normal, Student-t, stationary block bootstrap | done |
 | Risk metrics: Sharpe, Sortino, drawdown, VaR, CVaR, downside deviation | done |
-| Scenarios: allocation mixes, rebalancing, stress periods | to come |
+| Scenarios: allocation mixes, rebalancing, stress periods | done |
 | Efficient frontier, mean-variance, risk parity and CVaR optimisation | to come |
 | Fama-French factor attribution (Ken French data library) | to come |
 | Cost-aware backtest: transaction costs, spreads, rebalancing drag | to come |
