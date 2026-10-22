@@ -1,16 +1,21 @@
+import json
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from portfolio_risk.data import COLUMNS, write_cache
 from portfolio_risk.montecarlo import historical_portfolio_returns
 from portfolio_risk.scenarios import (
     MIXES,
     STRESS_PERIODS,
     _mix,
     backtest,
+    main,
     stress,
+    summarise,
     window,
 )
 
@@ -186,3 +191,136 @@ def test_the_named_mixes_and_periods_are_well_formed() -> None:
         assert backtest(columns.iloc[:5], _mix(spec, tickers), "daily").rebalances == 4
     for start, end in STRESS_PERIODS.values():
         assert start < end and start.weekday() < 5 and end.weekday() < 5
+
+
+def test_summarise_annualises_with_the_periods_it_is_given() -> None:
+    r = daily_returns(seed=7)
+    test = backtest(r, WEIGHTS, "monthly")
+    out = summarise(test, 250.0)
+    assert out["compound_return"] == pytest.approx(
+        wealth(test.returns) ** (250 / len(r)) - 1, rel=1e-12
+    )
+    assert out["turnover_per_year"] == pytest.approx(
+        test.turnover.sum() / (len(r) / 250), rel=1e-12
+    )
+    assert out["volatility"] == pytest.approx(test.returns.std() * 252**0.5, rel=1e-12)
+    assert out["sharpe_ratio"] == pytest.approx(
+        test.returns.mean() / test.returns.std() * 252**0.5, rel=1e-12
+    )
+    assert out["rebalances"] == test.rebalances
+    assert out["final_weights"] == pytest.approx(dict(test.weights.iloc[-1]))
+    w = (1 + test.returns).cumprod()
+    assert out["max_drawdown"] == pytest.approx((w / w.cummax().clip(lower=1) - 1).min())
+
+
+def prices() -> pd.DataFrame:
+    days = pd.bdate_range("2023-01-02", "2024-12-31")
+    rng = np.random.default_rng(0)
+    rows = []
+    for i, ticker in enumerate(["AAA", "BBB"]):
+        close = 50.0 * np.cumprod(1 + rng.normal(0.0003, 0.01 * (1 + i), len(days)))
+        for day, value in zip(days, close, strict=True):
+            rows.append((day.date(), ticker, float(value), 0.0, 0.0, 0.0, 1e6))
+    return pd.DataFrame(rows, columns=list(COLUMNS))
+
+
+def cache(tmp_path: Path) -> Path:
+    path = tmp_path / "prices.csv"
+    write_cache(prices(), path, start=date(2023, 1, 1), end=date(2024, 12, 31), source="t")
+    return path
+
+
+def test_the_command_prints_and_writes_every_mix_rule_and_period(tmp_path: Path, capsys) -> None:
+    out = tmp_path / "results" / "scenarios.json"
+    argv = ["--cache", str(cache(tmp_path)), "--json", str(out), "--mix", "AAA=0.7,BBB=0.3"]
+    argv += ["--mix", "equal", "--rule", "never", "--rule", "monthly"]
+    argv += ["--period", "2023-01-02:2023-06-30", "--period", "2024-03-01:2024-04-30"]
+    assert main(argv) == 0
+    printed = capsys.readouterr().out
+    assert (
+        f"2023-01-02 to 2023-06-30 ({len(pd.bdate_range('2023-01-03', '2023-06-30'))} days)"
+        in printed
+    )
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert b"\r" not in out.read_bytes()
+    assert written["mixes"] == {
+        "AAA=0.7,BBB=0.3": {"AAA": 0.7, "BBB": 0.3},
+        "equal": {
+            "AAA": 0.5,
+            "BBB": 0.5,
+        },
+    }
+    assert set(written["history"]["equal"]) == {"never", "monthly"}
+    assert written["history"]["equal"]["monthly"]["rebalances"] == 23
+    assert [s["period"] for s in written["stress"]] == [
+        "2023-01-02:2023-06-30",
+        "2024-03-01:2024-04-30",
+    ]
+    # A period may start at the first close, which no return covers.
+    p = prices().pivot(index="date", columns="ticker", values="close")
+    p.index = pd.DatetimeIndex(p.index)
+    first = written["stress"][0]
+    assert first["funds"]["AAA"] == pytest.approx(
+        p.loc["2023-06-30", "AAA"] / p.loc["2023-01-02", "AAA"] - 1, rel=1e-12
+    )
+    growth = p.loc["2023-06-30"] / p.loc["2023-01-02"]
+    assert first["mixes"]["AAA=0.7,BBB=0.3"]["never"]["return"] == pytest.approx(
+        0.7 * growth["AAA"] + 0.3 * growth["BBB"] - 1, rel=1e-12
+    )
+    days = written["history"]["equal"]["monthly"]
+    returns = (p / p.shift(1) - 1).iloc[1:]
+    years = (p.index[-1] - p.index[0]).days / 365.25
+    assert days["turnover_per_year"] == pytest.approx(
+        backtest(returns, {"AAA": 0.5, "BBB": 0.5}, "monthly").turnover.sum() / years,
+        rel=1e-9,
+    )
+    # The whole history's compound return is per calendar year.
+    years = (p.index[-1] - p.index[0]).days / 365.25
+    total = 0.5 * p.iloc[-1]["AAA"] / p.iloc[0]["AAA"] + 0.5 * p.iloc[-1]["BBB"] / p.iloc[0]["BBB"]
+    assert written["history"]["equal"]["never"]["compound_return"] == pytest.approx(
+        total ** (1 / years) - 1, rel=1e-9
+    )
+
+
+def test_named_periods_outside_the_data_are_listed_as_left_out(tmp_path: Path, capsys) -> None:
+    out = tmp_path / "s.json"
+    assert main(["--cache", str(cache(tmp_path)), "--mix", "equal", "--json", str(out)]) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["stress"] == []
+    assert written["stress_periods_left_out"] == list(STRESS_PERIODS)
+    printed = capsys.readouterr().out
+    assert "no stress period lies within the data" in printed
+    assert written["rules"] == ["daily", "monthly", "quarterly", "yearly", "never", "band:0.05"]
+
+
+def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
+    assert main(["--cache", str(tmp_path / "prices.csv")]) == 1
+    assert "manifest.json is missing" in capsys.readouterr().err
+    path = cache(tmp_path)
+    for argv, message in [
+        ([], "no returns for EEM, EFA, IWM, SPY"),  # the named mixes need the eight funds
+        (["--mix", "equal", "--mix", "equal"], "a mix is named twice"),
+        (["--mix", "equal", "--rule", "never", "--rule", "never"], "a rule is named twice"),
+        (["--mix", "equal", "--rule", "fortnightly"], "a rule is"),
+        (["--mix", "equal", "--period", "2023-03-04:2023-06-30"], "2023-03-04 is not a day"),
+        (["--mix", "equal", "--period", "March"], "START:END"),
+        (["--mix", "equal", "--period", "2023-06-30:2023-03-01"], "end after it starts"),
+        (["--mix", "equal", "--period", "2020-02-19:2020-03-23"], "not a day"),
+        (
+            [
+                "--mix",
+                "equal",
+                "--period",
+                "2024-03-01:2024-04-30",
+                "--period",
+                "2024-03-01:2024-04-30",
+            ],
+            "a period is named twice",
+        ),
+        (["--mix", "equal", "--json", str(tmp_path)], ""),  # a folder
+    ]:
+        assert main(["--cache", str(path), *argv]) == 1, argv
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("error: ") and message in captured.err
+        assert "Traceback" not in captured.err

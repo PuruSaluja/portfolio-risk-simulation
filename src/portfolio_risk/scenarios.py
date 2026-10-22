@@ -23,13 +23,20 @@ changes in weight. No trading costs are charged.
 falls of the S&P 500, each from its closing high to its closing low (SPY's closes
 peak and bottom on the same days). ``stress`` invests a mix at its targets at the
 close of a period's first day and follows it, under a rule, to the close of the last.
+
+``python -m portfolio_risk.scenarios`` backtests every mix under every rule over the
+whole history and over each stress period, from the cache's daily total returns.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -37,6 +44,7 @@ import pandas as pd
 
 from portfolio_risk import returns as ret
 from portfolio_risk import risk
+from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
 from portfolio_risk.montecarlo import check_weights, parse_weights
 
 MIXES = {
@@ -200,3 +208,161 @@ def stress(
 
 def _mix(spec: str, tickers: Sequence[str]) -> dict[str, float]:
     return parse_weights(MIXES.get(spec, spec), tickers)
+
+
+def _period(spec: str) -> tuple[str, date, date]:
+    """A named stress period, or ``START:END`` in ISO dates."""
+    if spec in STRESS_PERIODS:
+        return (spec, *STRESS_PERIODS[spec])
+    start, colon, end = spec.partition(":")
+    try:
+        return spec, date.fromisoformat(start.strip()), date.fromisoformat(end.strip())
+    except ValueError:
+        raise ValueError(
+            f"a period is one of the named ones or START:END, e.g. 2020-02-19:2020-03-23, "
+            f"not {spec!r}"
+        ) from None
+
+
+def run(
+    prices: pd.DataFrame,
+    mixes: Sequence[str] = tuple(MIXES),
+    rules: Sequence[str] = RULES,
+    periods: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Backtest every mix under every rule, over the history and each stress period.
+
+    Without ``periods``, the named stress periods that lie within the data; those that
+    do not are listed as left out.
+    """
+    daily = ret.total_returns(prices)
+    tickers = [str(t) for t in daily.columns]
+    if not mixes or not rules:
+        raise ValueError("needs at least one mix and one rule")
+    for names, what in ((mixes, "mix"), (rules, "rule")):
+        if len(set(names)) != len(names):
+            raise ValueError(f"a {what} is named twice")
+    weights = {spec: _mix(spec, tickers) for spec in mixes}
+    for rule in rules:
+        _band(rule)
+    index = pd.DatetimeIndex(daily.index)
+    first_close = wide(prices, "close").dropna().index[0]
+    if periods is None:
+        chosen = [(name, *days) for name, days in STRESS_PERIODS.items()]
+        within = [p for p in chosen if p[1] >= first_close.date() and p[2] <= index[-1].date()]
+        left_out = [p[0] for p in chosen if p not in within]
+    else:
+        within = [_period(spec) for spec in periods]
+        if len({p[0] for p in within}) != len(within):
+            raise ValueError("a period is named twice")
+        left_out = []
+    # The first close is a start the returns do not include; the windows need it.
+    with_start = pd.concat([pd.DataFrame(0.0, index=[first_close], columns=daily.columns), daily])
+    per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *index]))
+    history = {
+        spec: {rule: summarise(backtest(daily, w, rule), per_year) for rule in rules}
+        for spec, w in weights.items()
+    }
+    stressed = []
+    for name, start, end in within:
+        funds = window(with_start, start, end)
+        stressed.append(
+            {
+                "period": name,
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "days": len(funds),
+                "funds": {t: float(np.expm1(np.log1p(funds[t]).sum())) for t in tickers},
+                "mixes": {
+                    spec: {rule: _path(backtest(funds, w, rule)) for rule in rules}
+                    for spec, w in weights.items()
+                },
+            }
+        )
+    return {
+        "first_return": index[0].date().isoformat(),
+        "last_return": index[-1].date().isoformat(),
+        "mixes": weights,
+        "rules": list(rules),
+        "history": history,
+        "stress": stressed,
+        "stress_periods_left_out": left_out,
+    }
+
+
+def _print(result: dict[str, Any]) -> None:
+    print(f"daily total returns {result['first_return']} to {result['last_return']}")
+    for spec, w in result["mixes"].items():
+        print(f"  {spec}: " + ", ".join(f"{t} {v:.1%}" for t, v in w.items() if v > 0))
+    print(
+        f"\n{'':12} {'rule':10} {'compound':>8} {'vol':>7} {'Sharpe':>7} {'max DD':>8} "
+        f"{'rebal.':>6} {'turnover/yr':>11}"
+    )
+    for spec, by_rule in result["history"].items():
+        for rule, s in by_rule.items():
+            sharpe = "-" if s["sharpe_ratio"] is None else f"{s['sharpe_ratio']:.3f}"
+            print(
+                f"{spec:12} {rule:10} {s['compound_return']:>8.2%} {s['volatility']:>7.2%} "
+                f"{sharpe:>7} {s['max_drawdown']:>8.2%} {s['rebalances']:>6} "
+                f"{s['turnover_per_year']:>11.1%}"
+            )
+    if not result["stress"]:
+        print("\nno stress period lies within the data")
+    for entry in result["stress"]:
+        print(f"\n{entry['period']}, {entry['start']} to {entry['end']} ({entry['days']} days)")
+        print("  funds: " + ", ".join(f"{t} {r:.1%}" for t, r in entry["funds"].items()))
+        rules = result["rules"]
+        print(f"  {'':12}" + "".join(f" {rule:>10}" for rule in rules))
+        for spec, by_rule in entry["mixes"].items():
+            print(f"  {spec:12}" + "".join(f" {by_rule[r]['return']:>10.2%}" for r in rules))
+    if result["stress_periods_left_out"]:
+        print("\noutside the data: " + ", ".join(result["stress_periods_left_out"]))
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m portfolio_risk.scenarios", description=__doc__.splitlines()[0]
+    )
+    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument(
+        "--mix",
+        action="append",
+        help=f"{', '.join(MIXES)}, or weights such as SPY=0.6,AGG=0.4; may be given more "
+        "than once (default: every named mix)",
+    )
+    parser.add_argument(
+        "--rule",
+        action="append",
+        help=f"{', '.join(RULES[:5])} or band:<width>; may be given more than once "
+        f"(default: {', '.join(RULES)})",
+    )
+    parser.add_argument(
+        "--period",
+        action="append",
+        help="a named stress period or START:END; may be given more than once "
+        "(default: the named periods within the data)",
+    )
+    parser.add_argument("--json", type=Path, help="also write the figures to this file")
+    args = parser.parse_args(argv)
+    try:
+        prices = load_cache(args.cache)
+        sha256 = read_manifest(args.cache)["sha256"]
+        result = {
+            "cache_sha256": sha256,
+            **run(prices, args.mix or tuple(MIXES), args.rule or RULES, args.period),
+        }
+        # Written before anything is printed, so a failure leaves no half-finished run.
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.json, "w", encoding="utf-8", newline="\n") as out:
+                json.dump(result, out, indent=2, allow_nan=False)
+                out.write("\n")
+    except (DataError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    _print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
