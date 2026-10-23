@@ -33,21 +33,35 @@ constrained problem, and a bound is added when a step meets it and dropped when 
 multiplier has the wrong sign. The covariance matrix must be positive definite.
 
 ``estimates`` gives the inputs from daily returns: the arithmetic mean times 252 and
-the sample (or Ledoit-Wolf) covariance times 252. With the sample covariance and a
-zero risk-free rate, a portfolio's ratio here is the Sharpe ratio ``risk.sharpe_ratio``
-gives its daily returns, rebalanced every close.
+the sample (or Ledoit-Wolf) covariance times 252. With the sample covariance, a
+portfolio's ratio here is the Sharpe ratio ``risk.sharpe_ratio`` gives its daily
+returns, rebalanced every close, at the same risk-free rate.
+
+``python -m portfolio_risk.frontier`` gives the frontier, the minimum-variance and
+tangency portfolios and equal weights from the cache's daily total returns, and the
+same three chosen from the returns up to a split date and held after it: what
+the optimiser expected of them, and what they returned.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import math
-from typing import Literal
+import sys
+from collections.abc import Sequence
+from datetime import date
+from pathlib import Path
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 
 from portfolio_risk import covariance as cov
 from portfolio_risk import returns as ret
+from portfolio_risk import risk
+from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest
+from portfolio_risk.montecarlo import historical_portfolio_returns
 from portfolio_risk.risk import per_period_rate
 
 Estimator = Literal["sample", "ledoit-wolf"]
@@ -63,8 +77,8 @@ def _inputs(expected: pd.Series | None, covariance: pd.DataFrame) -> tuple[np.nd
         np.linalg.cholesky(matrix)
     except np.linalg.LinAlgError:
         raise ValueError(
-            "the covariance matrix is not positive definite (a fund that never varies, or "
-            "one that is a mix of others, makes it singular)"
+            "the covariance matrix is not positive definite (a fund whose returns are a "
+            "mix of the others' makes it singular)"
         ) from None
     if expected is None:
         return (matrix,)
@@ -335,3 +349,243 @@ def estimates(daily: pd.DataFrame, estimator: Estimator = "sample") -> tuple:
     else:
         raise ValueError(f"the covariance estimator is sample or ledoit-wolf, not {estimator!r}")
     return expected, cov.annualise(matrix, days)
+
+
+PORTFOLIOS = ("minimum_variance", "max_sharpe", "equal")
+DEFAULT_SPLIT = date(2015, 12, 31)
+
+
+def _choose(
+    expected: pd.Series, covariance: pd.DataFrame, risk_free: float, max_weight: float
+) -> dict[str, pd.Series]:
+    n = len(expected)
+    return {
+        "minimum_variance": minimum_variance(covariance, max_weight),
+        "max_sharpe": max_sharpe(expected, covariance, risk_free, max_weight),
+        # Equal weight is the comparison, so it ignores the cap: 1/n is within any
+        # cap the funds can meet.
+        "equal": pd.Series(1.0 / n, index=expected.index, name="weight"),
+    }
+
+
+def _described(
+    w: pd.Series, expected: pd.Series, covariance: pd.DataFrame, risk_free: float
+) -> dict[str, Any]:
+    mean, sd = moments(w, expected, covariance)
+    return {
+        "weights": {str(t): float(v) for t, v in w.items()},
+        "expected_return": mean,
+        "volatility": sd,
+        "sharpe_ratio": sharpe(w, expected, covariance, risk_free),
+    }
+
+
+def _realised(daily: pd.DataFrame, w: pd.Series, risk_free: float, first: pd.Timestamp) -> dict:
+    """What a portfolio, rebalanced every close, returned over ``daily``."""
+    history = historical_portfolio_returns(daily, w.to_dict())
+    per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first, *daily.index]))
+    days = ret.TRADING_DAYS_PER_YEAR
+    return {
+        "mean": float(ret.annualised_mean(history, days)),
+        "volatility": float(ret.annualised_volatility(history, days)),
+        "sharpe_ratio": risk.or_none(risk.sharpe_ratio, history, days, risk_free),
+        "compound_return": float(ret.annualised_return(history, per_year)),
+    }
+
+
+def _span(daily: pd.DataFrame) -> dict[str, Any]:
+    return {
+        "first_return": daily.index[0].date().isoformat(),
+        "last_return": daily.index[-1].date().isoformat(),
+        "daily_returns": len(daily),
+    }
+
+
+def run(
+    prices: pd.DataFrame,
+    estimator: Estimator = "sample",
+    max_weight: float = 1.0,
+    points: int = 21,
+    risk_free: float = 0.0,
+    split: date | None = DEFAULT_SPLIT,
+) -> dict[str, Any]:
+    """The frontier and three portfolios from the whole history, and, with a ``split``,
+    the same portfolios chosen from the returns up to that date and held after it.
+
+    The three are the minimum-variance portfolio, the tangency portfolio and equal
+    weights. Held after the split, each is rebalanced to its weights at every close.
+    """
+    daily = ret.total_returns(prices)
+    expected, covariance = estimates(daily, estimator)
+    chosen = _choose(expected, covariance, risk_free, max_weight)
+    table = frontier(expected, covariance, points, max_weight)
+    tickers = [str(t) for t in daily.columns]
+    result: dict[str, Any] = {
+        **_span(daily),
+        "estimator": estimator,
+        "max_weight": max_weight,
+        "risk_free": risk_free,
+        "funds": {
+            str(t): {
+                "expected_return": float(expected[t]),
+                "volatility": float(math.sqrt(covariance.loc[t, t])),
+            }
+            for t in daily.columns
+        },
+        "portfolios": {
+            name: _described(w, expected, covariance, risk_free) for name, w in chosen.items()
+        },
+        "frontier": [
+            {
+                "expected_return": float(row["expected_return"]),
+                "volatility": float(row["volatility"]),
+                "sharpe_ratio": sharpe(row[tickers], expected, covariance, risk_free),
+                "weights": {t: float(row[t]) for t in tickers},
+            }
+            for _, row in table.iterrows()
+        ],
+        "split": None,
+    }
+    if split is None:
+        return result
+    before = daily.loc[daily.index <= pd.Timestamp(split)]
+    after = daily.loc[daily.index > pd.Timestamp(split)]
+    # A covariance matrix of n funds needs more than n days to be positive definite.
+    if min(len(before), len(after)) <= len(tickers):
+        raise ValueError(
+            f"a split on {split.isoformat()} leaves returns on {len(before)} days before it "
+            f"and {len(after)} after; each side needs more than {len(tickers)}, one per fund"
+        )
+    early = estimates(before, estimator)
+    late = estimates(after, estimator)
+    held = _choose(*early, risk_free, max_weight)
+    result["split"] = {
+        "date": split.isoformat(),
+        "estimated_on": _span(before),
+        "held_on": _span(after),
+        "portfolios": {
+            name: {
+                **_described(w, *early, risk_free),
+                "realised": _realised(after, w, risk_free, before.index[-1]),
+            }
+            for name, w in held.items()
+        },
+        "chosen_after": {
+            name: _described(w, *late, risk_free)
+            for name, w in _choose(*late, risk_free, max_weight).items()
+            if name != "equal"
+        },
+    }
+    return result
+
+
+def _weights_text(weights: dict[str, float]) -> str:
+    return ", ".join(f"{t} {v:.1%}" for t, v in weights.items() if v >= 0.0005) or "-"
+
+
+def _print(result: dict[str, Any]) -> None:
+    cap = "" if result["max_weight"] == 1.0 else f", at most {result['max_weight']:.0%} a fund"
+    print(
+        f"{result['daily_returns']} daily returns, {result['first_return']} to "
+        f"{result['last_return']}; {result['estimator']} covariance; risk-free rate "
+        f"{result['risk_free']:.2%} a year; long only{cap}"
+    )
+    print(f"\n{'':18} {'expected':>8} {'vol':>7} {'Sharpe':>7}  weights")
+    for name, p in result["portfolios"].items():
+        print(
+            f"{name:18} {p['expected_return']:>8.2%} {p['volatility']:>7.2%} "
+            f"{p['sharpe_ratio']:>7.3f}  {_weights_text(p['weights'])}"
+        )
+    print(f"\nefficient frontier\n{'expected':>8} {'vol':>7} {'Sharpe':>7}  weights")
+    for row in result["frontier"]:
+        print(
+            f"{row['expected_return']:>8.2%} {row['volatility']:>7.2%} "
+            f"{row['sharpe_ratio']:>7.3f}  {_weights_text(row['weights'])}"
+        )
+    split = result["split"]
+    if split is None:
+        return
+    first, then = split["estimated_on"], split["held_on"]
+    print(
+        f"\nchosen from {first['first_return']} to {first['last_return']}, held from "
+        f"{then['first_return']} to {then['last_return']}: expected, then realised"
+    )
+    print(
+        f"{'':18} {'expected':>8} {'vol':>7} {'Sharpe':>7} | {'mean':>7} {'vol':>7} "
+        f"{'Sharpe':>7} {'compound':>8}"
+    )
+    for name, p in split["portfolios"].items():
+        r = p["realised"]
+        sharpe_text = "-" if r["sharpe_ratio"] is None else f"{r['sharpe_ratio']:.3f}"
+        print(
+            f"{name:18} {p['expected_return']:>8.2%} {p['volatility']:>7.2%} "
+            f"{p['sharpe_ratio']:>7.3f} | {r['mean']:>7.2%} {r['volatility']:>7.2%} "
+            f"{sharpe_text:>7} {r['compound_return']:>8.2%}"
+        )
+    for name, p in split["portfolios"].items():
+        if name != "equal":
+            print(f"  {name} chosen before: {_weights_text(p['weights'])}")
+            later = split["chosen_after"][name]["weights"]
+            print(f"  {name} chosen after:  {_weights_text(later)}")
+
+
+def _split(text: str) -> date | None:
+    if text.strip().lower() == "none":
+        return None
+    try:
+        return date.fromisoformat(text.strip())
+    except ValueError:
+        raise ValueError(f"a split is a date such as 2015-12-31, or none, not {text!r}") from None
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m portfolio_risk.frontier", description=__doc__.splitlines()[0]
+    )
+    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument(
+        "--covariance", choices=["sample", "ledoit-wolf"], default="sample", help="estimator"
+    )
+    parser.add_argument(
+        "--max-weight", type=float, default=1.0, help="most any fund may hold (default 1)"
+    )
+    parser.add_argument(
+        "--points", type=int, default=21, help="portfolios along the frontier (default 21)"
+    )
+    parser.add_argument(
+        "--risk-free",
+        type=float,
+        default=0.0,
+        help="compound annual risk-free rate (default 0)",
+    )
+    parser.add_argument(
+        "--split",
+        default=DEFAULT_SPLIT.isoformat(),
+        help="choose the portfolios from the returns up to this date and hold them after "
+        f"it (default {DEFAULT_SPLIT.isoformat()}; none to skip)",
+    )
+    parser.add_argument("--json", type=Path, help="also write the figures to this file")
+    args = parser.parse_args(argv)
+    try:
+        split = _split(args.split)
+        prices = load_cache(args.cache)
+        sha256 = read_manifest(args.cache)["sha256"]
+        result = {
+            "cache_sha256": sha256,
+            **run(prices, args.covariance, args.max_weight, args.points, args.risk_free, split),
+        }
+        # Written before anything is printed, so a failure leaves no half-finished run.
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.json, "w", encoding="utf-8", newline="\n") as out:
+                json.dump(result, out, indent=2, allow_nan=False)
+                out.write("\n")
+    except (DataError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    _print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

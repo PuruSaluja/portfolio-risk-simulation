@@ -1,12 +1,18 @@
 import itertools
+import json
 import math
+from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from portfolio_risk import frontier as fr
+from portfolio_risk.data import COLUMNS, load_cache, write_cache
+from portfolio_risk.frontier import main
 from portfolio_risk.montecarlo import historical_portfolio_returns
+from portfolio_risk.returns import total_returns
 from portfolio_risk.risk import sharpe_ratio
 
 
@@ -360,3 +366,143 @@ def test_a_target_a_rounding_error_past_either_end_gets_that_end() -> None:
     low, high = fr.return_range(mu)
     assert fr.efficient_portfolio(mu, covariance, high + 5e-13).tolist() == [0.0, 0.0, 0.0, 1.0]
     assert fr.efficient_portfolio(mu, covariance, low - 5e-13).tolist() == [0.0, 0.0, 1.0, 0.0]
+
+
+def prices(flat: str | None = None) -> pd.DataFrame:
+    days = pd.bdate_range("2023-01-02", "2024-12-31")
+    rng = np.random.default_rng(0)
+    rows = []
+    for i, ticker in enumerate(["AAA", "BBB", "CCC"]):
+        close = 50.0 * np.cumprod(1 + rng.normal(0.0002 * (i + 1), 0.006 * (1 + i), len(days)))
+        if ticker == flat:
+            close[:] = 50.0
+        for day, value in zip(days, close, strict=True):
+            rows.append((day.date(), ticker, float(value), 0.0, 0.0, 0.0, 1e6))
+    return pd.DataFrame(rows, columns=list(COLUMNS))
+
+
+def cache(tmp_path: Path, flat: str | None = None) -> Path:
+    path = tmp_path / "prices.csv"
+    write_cache(prices(flat), path, start=date(2023, 1, 1), end=date(2024, 12, 31), source="t")
+    return path
+
+
+def test_the_command_prints_and_writes_the_frontier_and_the_split(tmp_path: Path, capsys) -> None:
+    out = tmp_path / "results" / "frontier.json"
+    path = cache(tmp_path)
+    argv = ["--cache", str(path), "--json", str(out), "--split", "2023-12-29"]
+    assert main([*argv, "--points", "5"]) == 0
+    printed = capsys.readouterr().out
+    assert "chosen from 2023-01-03 to 2023-12-29, held from 2024-01-01 to 2024-12-31" in printed
+    assert b"\r" not in out.read_bytes()
+    written = json.loads(out.read_text(encoding="utf-8"))
+    # From the cache, as the command reads it: parsing the CSV can change a close's last bit.
+    daily = total_returns(load_cache(path))
+    expected, covariance = fr.estimates(daily)
+    least = fr.minimum_variance(covariance)
+    tangency = fr.max_sharpe(expected, covariance)
+    portfolios = written["portfolios"]
+    assert list(portfolios) == ["minimum_variance", "max_sharpe", "equal"]
+    assert portfolios["minimum_variance"]["weights"] == least.to_dict()
+    assert portfolios["max_sharpe"]["weights"] == tangency.to_dict()
+    assert portfolios["equal"]["weights"] == {"AAA": 1 / 3, "BBB": 1 / 3, "CCC": 1 / 3}
+    assert portfolios["max_sharpe"]["sharpe_ratio"] == pytest.approx(
+        sharpe_ratio(historical_portfolio_returns(daily, tangency.to_dict()), 252), rel=1e-12
+    )
+    assert written["funds"]["BBB"]["expected_return"] == pytest.approx(daily["BBB"].mean() * 252)
+    assert len(written["frontier"]) == 5
+    assert written["frontier"][0]["weights"] == pytest.approx(least.to_dict(), abs=1e-15)
+    assert written["frontier"][-1]["expected_return"] == pytest.approx(expected.max())
+    split = written["split"]
+    assert split["estimated_on"] == {
+        "first_return": "2023-01-03",
+        "last_return": "2023-12-29",
+        "daily_returns": 259,
+    }
+    assert split["held_on"]["first_return"] == "2024-01-01"
+    before, after = daily.loc[:"2023-12-29"], daily.loc["2024-01-01":]
+    held = fr.max_sharpe(*fr.estimates(before))
+    entry = split["portfolios"]["max_sharpe"]
+    assert entry["weights"] == held.to_dict()
+    history = historical_portfolio_returns(after, held.to_dict())
+    assert entry["realised"]["mean"] == pytest.approx(history.mean() * 252, rel=1e-12)
+    assert entry["realised"]["sharpe_ratio"] == pytest.approx(sharpe_ratio(history, 252))
+    years = (date(2024, 12, 31) - date(2023, 12, 29)).days / 365.25
+    assert entry["realised"]["compound_return"] == pytest.approx(
+        np.prod(1 + history) ** (1 / years) - 1, rel=1e-12
+    )
+    assert (
+        split["chosen_after"]["max_sharpe"]["weights"]
+        == fr.max_sharpe(*fr.estimates(after)).to_dict()
+    )
+    assert "equal" not in split["chosen_after"]
+
+
+def test_the_command_takes_a_cap_a_rate_and_the_shrunk_covariance(tmp_path: Path) -> None:
+    out = tmp_path / "f.json"
+    path = cache(tmp_path)
+    assert main(["--cache", str(path), "--json", str(out), "--split", "none"]) == 0
+    plain = json.loads(out.read_text(encoding="utf-8"))
+    assert plain["split"] is None
+    argv = ["--cache", str(path), "--json", str(out), "--split", "2023-12-29"]
+    argv += ["--max-weight", "0.6", "--risk-free", "0.02", "--covariance", "ledoit-wolf"]
+    assert main(argv) == 0
+    capped = json.loads(out.read_text(encoding="utf-8"))
+    assert (capped["max_weight"], capped["risk_free"], capped["estimator"]) == (
+        0.6,
+        0.02,
+        "ledoit-wolf",
+    )
+    for row in [*capped["frontier"], *capped["portfolios"].values()]:
+        assert max(row["weights"].values()) <= 0.6
+    daily = total_returns(load_cache(path))
+    rate = (1.02 ** (1 / 252) - 1) * 252
+    expected, covariance = fr.estimates(daily, "ledoit-wolf")
+    for ticker, fund in capped["funds"].items():
+        assert fund["volatility"] == pytest.approx(math.sqrt(covariance.loc[ticker, ticker]))
+    assert capped["funds"]["BBB"]["volatility"] != plain["funds"]["BBB"]["volatility"]
+    for name, w in [
+        ("max_sharpe", fr.max_sharpe(expected, covariance, 0.02, 0.6)),
+        ("minimum_variance", fr.minimum_variance(covariance, 0.6)),
+    ]:
+        assert capped["portfolios"][name]["weights"] == w.to_dict()
+        assert capped["portfolios"][name]["weights"] != plain["portfolios"][name]["weights"]
+    for row in capped["frontier"]:
+        assert row["sharpe_ratio"] == pytest.approx(
+            (row["expected_return"] - rate) / row["volatility"], rel=1e-12
+        )
+    # Chosen from the shrunk estimates before the split; expected figures from the same.
+    before, after = daily.loc[:"2023-12-29"], daily.loc["2024-01-01":]
+    early = fr.estimates(before, "ledoit-wolf")
+    entry = capped["split"]["portfolios"]["max_sharpe"]
+    held = fr.max_sharpe(*early, 0.02, 0.6)
+    assert entry["weights"] == held.to_dict()
+    mean, sd = fr.moments(held, *early)
+    assert (entry["expected_return"], entry["volatility"]) == pytest.approx((mean, sd), rel=1e-12)
+    history = historical_portfolio_returns(after, held.to_dict())
+    assert entry["realised"]["sharpe_ratio"] == pytest.approx(
+        sharpe_ratio(history, 252, 0.02), rel=1e-12
+    )
+
+
+def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
+    assert main(["--cache", str(tmp_path / "prices.csv")]) == 1
+    assert "manifest.json is missing" in capsys.readouterr().err
+    path = cache(tmp_path)
+    for argv, message in [
+        ([], "leaves returns on 0 days before it"),  # the default split precedes the data
+        (["--split", "2024-12-27"], "and 2 after; each side needs more than 3"),
+        (["--split", "2023-13-01"], "a split is a date"),
+        (["--split", "none", "--max-weight", "0.3"], "cannot add up to 1"),
+        (["--split", "none", "--max-weight", "nan"], "max_weight"),
+        (["--split", "none", "--points", "1"], "points"),
+        (["--split", "none", "--risk-free", "5"], "above the risk-free rate"),
+        (["--split", "none", "--json", str(tmp_path)], ""),  # a folder
+    ]:
+        assert main(["--cache", str(path), *argv]) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("error: ") and message in captured.err
+        assert "Traceback" not in captured.err
+    assert main(["--cache", str(cache(tmp_path / "flat", "BBB")), "--split", "none"]) == 1
+    assert "BBB has a variance of 0.0" in capsys.readouterr().err
