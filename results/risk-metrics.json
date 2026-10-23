@@ -17,12 +17,12 @@
   "series": {
     "SPY": {
       "compound_return": 0.10870477649374385,
-      "volatility": 0.1888191110512178,
-      "sharpe_ratio": 0.6420027093472572,
-      "downside_deviation": 0.13362606078713518,
-      "sortino_ratio": 0.9071761912111466,
+      "volatility": 0.18881911105121782,
+      "sharpe_ratio": 0.6420027093472571,
+      "downside_deviation": 0.1336260607871352,
+      "sortino_ratio": 0.9071761912111463,
       "max_drawdown": {
-        "depth": -0.5520142834962483,
+        "depth": -0.552014283496248,
         "peak": "2007-10-09",
         "trough": "2009-03-09",
         "recovery": "2012-08-16",
@@ -33,34 +33,34 @@
         "95": {
           "historical": {
             "value_at_risk": 0.017462913889793708,
-            "expected_shortfall": 0.028911160193087523
+            "expected_shortfall": 0.028911160193087534
           },
           "normal": {
-            "value_at_risk": 0.019083647189758322,
-            "expected_shortfall": 0.02405386734910118
+            "value_at_risk": 0.019083647189758326,
+            "expected_shortfall": 0.024053867349101185
           }
         },
         "99": {
           "historical": {
             "value_at_risk": 0.034554584900548635,
-            "expected_shortfall": 0.05089146970305983
+            "expected_shortfall": 0.05089146970305981
           },
           "normal": {
-            "value_at_risk": 0.027189670948415876,
-            "expected_shortfall": 0.03122031194925958
+            "value_at_risk": 0.02718967094841588,
+            "expected_shortfall": 0.031220311949259588
           }
         }
       },
-      "sharpe_ratio_monthly": 0.7746136303447164
+      "sharpe_ratio_monthly": 0.7746136303447168
     },
     "IWM": {
-      "compound_return": 0.08422815649180694,
+      "compound_return": 0.08422815649180714,
       "volatility": 0.23974937256800197,
-      "sharpe_ratio": 0.458224993929226,
-      "downside_deviation": 0.17018042090326066,
-      "sortino_ratio": 0.6455452055319457,
+      "sharpe_ratio": 0.45822499392922666,
+      "downside_deviation": 0.1701804209032607,
+      "sortino_ratio": 0.6455452055319466,
       "max_drawdown": {
-        "depth": -0.5862849205548765,
+        "depth": -0.5862849205548766,
         "peak": "2007-07-13",
         "trough": "2009-03-09",
         "recovery": "2011-02-08",
@@ -70,8 +70,8 @@
       "tail": {
         "95": {
           "historical": {
-            "value_at_risk": 0.02270754156515309,
-            "expected_shortfall": 0.035223870224887086
+            "value_at_risk": 0.022707541565152978,
+            "expected_shortfall": 0.03522387022488709
           },
           "normal": {
             "value_at_risk": 0.024405931322798256,
@@ -81,7 +81,7 @@
         "99": {
           "historical": {
             "value_at_risk": 0.039306728684125436,
-            "expected_shortfall": 0.059174672017797136
+            "expected_shortfall": 0.05917467201779715
           },
           "normal": {
             "value_at_risk": 0.034698396419894854,
@@ -89,16 +89,16 @@
           }
         }
       },
-      "sharpe_ratio_monthly": 0.5090577086505418
+      "sharpe_ratio_monthly": 0.5090577086505426
     },
     "EFA": {
-      "compound_return": 0.06131439144600367,
-      "volatility": 0.209589692220672,
-      "sharpe_ratio": 0.38936137295101364,
+      "compound_return": 0.0613143914460038,
+      "volatility": 0.20958969222067203,
+      "sharpe_ratio": 0.38936137295101414,
       "downside_deviation": 0.14929351650622488,
-      "sortino_ratio": 0.5466153670244521,
+      "sortino_ratio": 0.5466153670244529,
       "max_drawdown": {
-        "depth": -0.6104520546545114,
+        "depth": -0.6104520546545107,
         "peak": "2007-10-31",
         "trough": "2009-03-09",
         "recovery": "2014-06-06",
@@ -109,10 +109,10 @@
         "95": {
           "historical": {
             "value_at_risk": 0.019378191336315465,
-            "expected_shortfall": 0.031729061220735
+            "expected_shortfall": 0.031729061220734996
           },
           "normal": {
-            "value_at_risk": 0.021393019882722568,
+            "value_at_risk": 0.02139301988272257,
             "expected_shortfall": 0.02690997686692891
           }
         },
@@ -122,21 +122,21 @@
             "expected_shortfall": 0.05706020749795166
           },
           "normal": {
-            "value_at_risk": 0.030390726816368965,
-            "expected_shortfall": 0.034864748551328324
+            "value_at_risk": 0.03039072681636897,
+            "expected_shortfall": 0.03486474855132833
           }
         }
       },
-      "sharpe_ratio_monthly": 0.44171001051593745
+      "sharpe_ratio_monthly": 0.4417100105159376
     },
     "EEM": {
-      "compound_return": 0.07278459853291978,
-      "volatility": 0.2762416076359779,
-      "sharpe_ratio": 0.3924328937566073,
+      "compound_return": 0.07278459853291988,
+      "volatility": 0.2762416076359778,
+      "sharpe_ratio": 0.3924328937566078,
       "downside_deviation": 0.19157635555371996,
-      "sortino_ratio": 0.5658646817204217,
+      "sortino_ratio": 0.5658646817204224,
       "max_drawdown": {
-        "depth": -0.6644881765517068,
+        "depth": -0.664488176551707,
         "peak": "2007-10-31",
         "trough": "2008-11-20",
         "recovery": "2017-09-19",
@@ -150,31 +150,31 @@
             "expected_shortfall": 0.04026283356868354
           },
           "normal": {
-            "value_at_risk": 0.028192877499284525,
-            "expected_shortfall": 0.03546428980219062
+            "value_at_risk": 0.02819287749928452,
+            "expected_shortfall": 0.035464289802190616
           }
         },
         "99": {
           "historical": {
-            "value_at_risk": 0.048535559243805815,
-            "expected_shortfall": 0.07164932987456302
+            "value_at_risk": 0.048535559243805704,
+            "expected_shortfall": 0.07164932987456304
           },
           "normal": {
-            "value_at_risk": 0.04005195798197782,
-            "expected_shortfall": 0.04594876971717623
+            "value_at_risk": 0.04005195798197781,
+            "expected_shortfall": 0.04594876971717622
           }
         }
       },
-      "sharpe_ratio_monthly": 0.4420182812366692
+      "sharpe_ratio_monthly": 0.44201828123667025
     },
     "AGG": {
-      "compound_return": 0.028597788258088508,
-      "volatility": 0.05204551231697963,
-      "sharpe_ratio": 0.568826615895729,
-      "downside_deviation": 0.03765934610756204,
-      "sortino_ratio": 0.7861228540524847,
+      "compound_return": 0.028597788258088692,
+      "volatility": 0.052045512316979674,
+      "sharpe_ratio": 0.568826615895732,
+      "downside_deviation": 0.037659346107562074,
+      "sortino_ratio": 0.7861228540524889,
       "max_drawdown": {
-        "depth": -0.18435869444396225,
+        "depth": -0.1843586944439628,
         "peak": "2020-08-04",
         "trough": "2022-10-20",
         "recovery": null,
@@ -185,34 +185,34 @@
         "95": {
           "historical": {
             "value_at_risk": 0.004495024927566149,
-            "expected_shortfall": 0.007261031211166385
+            "expected_shortfall": 0.007261031211166393
           },
           "normal": {
-            "value_at_risk": 0.005275270183161058,
-            "expected_shortfall": 0.0066452462045554815
+            "value_at_risk": 0.005275270183161062,
+            "expected_shortfall": 0.006645246204555487
           }
         },
         "99": {
           "historical": {
-            "value_at_risk": 0.008008200894017659,
-            "expected_shortfall": 0.013283211684496588
+            "value_at_risk": 0.00800820089401777,
+            "expected_shortfall": 0.013283211684496586
           },
           "normal": {
-            "value_at_risk": 0.00750958935257238,
-            "expected_shortfall": 0.008620582697932594
+            "value_at_risk": 0.007509589352572387,
+            "expected_shortfall": 0.0086205826979326
           }
         }
       },
-      "sharpe_ratio_monthly": 0.6503937413040616
+      "sharpe_ratio_monthly": 0.6503937413040577
     },
     "TLT": {
-      "compound_return": 0.026855039925990053,
-      "volatility": 0.14534149586306636,
-      "sharpe_ratio": 0.2552765779747632,
-      "downside_deviation": 0.10158917726972633,
-      "sortino_ratio": 0.36521882250456317,
+      "compound_return": 0.026855039925990018,
+      "volatility": 0.14534149586306638,
+      "sharpe_ratio": 0.25527657797476294,
+      "downside_deviation": 0.10158917726972636,
+      "sortino_ratio": 0.3652188225045627,
       "max_drawdown": {
-        "depth": -0.4834981948868867,
+        "depth": -0.48349819488688683,
         "peak": "2020-08-04",
         "trough": "2023-10-19",
         "recovery": null,
@@ -223,34 +223,34 @@
         "95": {
           "historical": {
             "value_at_risk": 0.014660461406176606,
-            "expected_shortfall": 0.019903360807065295
+            "expected_shortfall": 0.01990336080706529
           },
           "normal": {
-            "value_at_risk": 0.014912478841985549,
-            "expected_shortfall": 0.01873825277295015
+            "value_at_risk": 0.01491247884198555,
+            "expected_shortfall": 0.018738252772950152
           }
         },
         "99": {
           "historical": {
-            "value_at_risk": 0.022998188081443383,
-            "expected_shortfall": 0.029141874442555345
+            "value_at_risk": 0.02299818808144327,
+            "expected_shortfall": 0.029141874442555307
           },
           "normal": {
-            "value_at_risk": 0.021152004131696663,
-            "expected_shortfall": 0.024254547031555596
+            "value_at_risk": 0.021152004131696666,
+            "expected_shortfall": 0.0242545470315556
           }
         }
       },
-      "sharpe_ratio_monthly": 0.26177698713488295
+      "sharpe_ratio_monthly": 0.2617769871348822
     },
     "GLD": {
-      "compound_return": 0.10551976448349154,
+      "compound_return": 0.10551976448349168,
       "volatility": 0.18288631785091744,
-      "sharpe_ratio": 0.6411906724537706,
-      "downside_deviation": 0.129385173043148,
-      "sortino_ratio": 0.9063248776296621,
+      "sharpe_ratio": 0.6411906724537711,
+      "downside_deviation": 0.12938517304314798,
+      "sortino_ratio": 0.9063248776296631,
       "max_drawdown": {
-        "depth": -0.4555501273425685,
+        "depth": -0.4555501273425687,
         "peak": "2011-08-22",
         "trough": "2015-12-17",
         "recovery": "2020-07-29",
@@ -260,8 +260,8 @@
       "tail": {
         "95": {
           "historical": {
-            "value_at_risk": 0.017988933768096182,
-            "expected_shortfall": 0.02730857061499238
+            "value_at_risk": 0.01798893376809596,
+            "expected_shortfall": 0.02730857061499237
           },
           "normal": {
             "value_at_risk": 0.018484618545733213,
@@ -271,7 +271,7 @@
         "99": {
           "historical": {
             "value_at_risk": 0.03184668568859872,
-            "expected_shortfall": 0.044580496404001003
+            "expected_shortfall": 0.04458049640400099
           },
           "normal": {
             "value_at_risk": 0.02633594688521897,
@@ -279,16 +279,16 @@
           }
         }
       },
-      "sharpe_ratio_monthly": 0.6676634752150137
+      "sharpe_ratio_monthly": 0.6676634752150139
     },
     "VNQ": {
-      "compound_return": 0.06630013788285512,
+      "compound_return": 0.06630013788285496,
       "volatility": 0.2837862921146385,
-      "sharpe_ratio": 0.3688755946643312,
+      "sharpe_ratio": 0.3688755946643307,
       "downside_deviation": 0.1986514821400231,
-      "sortino_ratio": 0.5269622765139299,
+      "sortino_ratio": 0.5269622765139292,
       "max_drawdown": {
-        "depth": -0.7306740371801551,
+        "depth": -0.730674037180155,
         "peak": "2007-02-07",
         "trough": "2009-03-06",
         "recovery": "2012-09-13",
@@ -299,34 +299,34 @@
         "95": {
           "historical": {
             "value_at_risk": 0.023481793731813028,
-            "expected_shortfall": 0.04243940085440279
+            "expected_shortfall": 0.042439400854402794
           },
           "normal": {
             "value_at_risk": 0.028989407408922332,
-            "expected_shortfall": 0.036459415832120236
+            "expected_shortfall": 0.03645941583212024
           }
         },
         "99": {
           "historical": {
-            "value_at_risk": 0.05456057698685801,
+            "value_at_risk": 0.0545605769868579,
             "expected_shortfall": 0.08168778054029198
           },
           "normal": {
-            "value_at_risk": 0.04117238196830688,
-            "expected_shortfall": 0.04723024686400804
+            "value_at_risk": 0.04117238196830689,
+            "expected_shortfall": 0.04723024686400805
           }
         }
       },
-      "sharpe_ratio_monthly": 0.40989660949397594
+      "sharpe_ratio_monthly": 0.4098966094939752
     },
     "portfolio": {
-      "compound_return": 0.08222180789763008,
-      "volatility": 0.13825820373149847,
-      "sharpe_ratio": 0.641687012974243,
+      "compound_return": 0.08222180789763013,
+      "volatility": 0.1382582037314985,
+      "sharpe_ratio": 0.6416870129742434,
       "downside_deviation": 0.09657865028653725,
-      "sortino_ratio": 0.9186139328768052,
+      "sortino_ratio": 0.9186139328768059,
       "max_drawdown": {
-        "depth": -0.38309927907366326,
+        "depth": -0.3830992790736637,
         "peak": "2007-10-31",
         "trough": "2008-11-20",
         "recovery": "2010-01-11",
@@ -336,26 +336,26 @@
       "tail": {
         "95": {
           "historical": {
-            "value_at_risk": 0.012526157352500566,
+            "value_at_risk": 0.012526157352500539,
             "expected_shortfall": 0.020458579267766803
           },
           "normal": {
-            "value_at_risk": 0.013973709921583087,
-            "expected_shortfall": 0.017613032803441307
+            "value_at_risk": 0.01397370992158309,
+            "expected_shortfall": 0.017613032803441314
           }
         },
         "99": {
           "historical": {
-            "value_at_risk": 0.024293742709896926,
-            "expected_shortfall": 0.03649283822305649
+            "value_at_risk": 0.024293742709896954,
+            "expected_shortfall": 0.0364928382230565
           },
           "normal": {
-            "value_at_risk": 0.01990914875527637,
-            "expected_shortfall": 0.02286048764020534
+            "value_at_risk": 0.019909148755276374,
+            "expected_shortfall": 0.022860487640205342
           }
         }
       },
-      "sharpe_ratio_monthly": 0.7500055115253427
+      "sharpe_ratio_monthly": 0.750005511525345
     }
   }
 }
