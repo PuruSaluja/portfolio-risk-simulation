@@ -4,8 +4,8 @@ Monte Carlo simulation and risk analysis of multi-asset portfolios, on real
 daily market data.
 
 > **Status:** in progress. The data ingestion, the returns and covariance
-> engine, the Monte Carlo simulation, the risk measures and the scenario engine
-> are done; the parts below are built in order, and every figure this README
+> engine, the Monte Carlo simulation, the risk measures, the scenario engine
+> and the mean-variance optimiser are done; the parts below are built in order, and every figure this README
 > gives comes from a run of the committed code.
 
 ## The data is real
@@ -492,6 +492,119 @@ What they show:
   and 30.7% against 38.6% for equal weight. In the shorter windows the rules
   differ by at most 1.5 points for any mix.
 
+## Mean-variance optimisation and the efficient frontier
+
+[`frontier.py`](src/portfolio_risk/frontier.py) finds long-only, fully
+invested portfolios of the eight funds, each weight between 0 and an optional
+cap, from expected yearly returns (the mean daily return times 252) and the
+yearly covariance (the sample covariance times 252, or Ledoit-Wolf's): the
+**minimum-variance** portfolio; the **efficient frontier**, the
+lowest-volatility portfolio at each expected return from the minimum-variance
+portfolio's up to the highest any portfolio has; and the **tangency**
+portfolio, with the highest ratio of expected excess return to volatility.
+Ratios are against a zero risk-free rate, as in the risk measures. With the
+sample covariance a portfolio's ratio is exactly the Sharpe ratio of its daily
+returns rebalanced every close: equal weight's is 0.642 here and in
+[`results/risk-metrics.json`](results/risk-metrics.json) alike.
+
+Each portfolio is the exact solution of its quadratic programme, by a primal
+active-set method written in numpy. The tangency portfolio is found by
+bisection on the tangency condition along the frontier, since near its peak
+the ratio itself is too flat to search on. The tests check every portfolio
+against brute force (the lowest variance over every pattern of funds at zero,
+at the cap or free; the best tangency over every set of funds held, to 1e-12
+in the weights), against closed forms where no bound binds, and on expected
+returns that differ only in the ninth decimal. On the real data scipy's SLSQP
+finds the same portfolios: variances within 3e-15 of these, relative, and
+tangency ratios equal to 15 significant digits.
+
+```bash
+python -m portfolio_risk.frontier --json results/frontier.json
+python -m portfolio_risk.frontier --max-weight 0.3 --json results/frontier-cap30.json
+```
+
+`--max-weight` caps every fund, `--covariance ledoit-wolf` shrinks the
+covariance, `--risk-free` sets the rate (compound, a year) and `--points` the
+portfolios along the frontier (21).
+
+**Out of sample.** Portfolios fitted to the whole history and judged on it
+look better than they are. So the command also chooses the minimum-variance
+and tangency portfolios, and equal weights to compare, from the returns up to
+each split date, holds them after it rebalanced daily, and reports what they
+returned beside what the optimiser expected. `--split` may be given more than
+once; by default the splits are the ends of 2009, 2012, 2015, 2018 and 2021
+(`none` for none).
+
+### Results
+
+The whole history, 4 January 2005 to 30 September 2026
+([`results/frontier.json`](results/frontier.json),
+[`results/frontier-cap30.json`](results/frontier-cap30.json)), as the
+optimiser sees it, in sample:
+
+| Portfolio | Cap | Expected | Volatility | Sharpe | Weights |
+| --- | --- | ---: | ---: | ---: | --- |
+| Minimum variance | none | 3.73% | 5.01% | 0.744 | AGG 91.5%, SPY 6.8%, GLD 1.6% |
+| Tangency | none | 6.74% | 6.82% | 0.988 | AGG 55.2%, SPY 22.8%, GLD 18.9%, TLT 3.0% |
+| Minimum variance | 30% | 6.79% | 7.49% | 0.907 | AGG 30.0%, TLT 30.0%, SPY 26.0%, GLD 14.0% |
+| Tangency | 30% | 7.99% | 8.18% | 0.976 | SPY 30.0%, AGG 30.0%, GLD 24.7%, TLT 15.3% |
+| Equal weight | - | 8.87% | 13.83% | 0.642 | 12.5% each |
+
+Uncapped, the frontier runs from 3.73% expected at 5.01% volatility to SPY
+alone, 12.12% at 18.88%, and never holds IWM, EFA, EEM or VNQ.
+
+Chosen up to each split and held after it, the Sharpe ratio the optimiser
+expected, then the one realised:
+
+| Chosen up to | Days held | Minimum variance | Tangency | Minimum variance, 30% cap | Tangency, 30% cap | Equal weight |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2009-12-31 | 4,211 | 0.94 → 0.68 | 1.25 → 0.64 | 0.96 → 0.88 | 1.22 → 0.59 | 0.52 → 0.73 |
+| 2012-12-31 | 3,457 | 1.14 → 0.52 | 1.39 → 0.46 | 1.22 → 0.74 | 1.33 → 0.45 | 0.62 → 0.69 |
+| 2015-12-31 | 2,701 | 0.99 → 0.53 | 1.10 → 0.67 | 1.05 → 0.79 | 1.05 → 0.78 | 0.57 → 0.75 |
+| 2018-12-31 | 1,947 | 0.97 → 0.47 | 1.07 → 0.71 | 1.03 → 0.77 | 1.03 → 0.77 | 0.58 → 0.77 |
+| 2021-12-31 | 1,190 | 0.99 → 0.12 | 1.16 → 0.36 | 1.14 → 0.34 | 1.15 → 0.35 | 0.67 → 0.53 |
+
+and the compound return a year realised after the split:
+
+| Chosen up to | Minimum variance | Tangency | Minimum variance, 30% cap | Tangency, 30% cap | Equal weight |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2009-12-31 | 3.47% | 4.25% | 6.48% | 4.84% | 8.11% |
+| 2012-12-31 | 2.50% | 2.86% | 5.51% | 3.55% | 7.31% |
+| 2015-12-31 | 2.74% | 4.24% | 6.25% | 6.15% | 8.50% |
+| 2018-12-31 | 2.69% | 5.01% | 6.71% | 6.71% | 9.56% |
+| 2021-12-31 | 0.55% | 2.61% | 2.77% | 2.88% | 5.92% |
+
+What they show:
+
+- **Every optimised portfolio fell short of the ratio it expected, after every
+  split** (20 of 20). Most of the shortfall is in the mean: the uncapped
+  tangency portfolio earned 0.34 to 0.94 of the return it expected, while its
+  volatility came out 0.88 to 1.42 times the forecast. A few years of history
+  estimate mean returns least precisely of all the inputs, and the optimiser
+  leans hardest on them.
+- **Equal weight realised a higher ratio than the uncapped minimum-variance
+  and tangency portfolios after every split** (0.53 to 0.77, against 0.12 to
+  0.68 and 0.36 to 0.71), and the highest compound return of all five
+  portfolios after every split. It holds the most equity: 62.5% in the four
+  equity funds and REITs, against at most 28.4% for the others.
+- **A cap helps the minimum-variance portfolio, not the tangency.** Capped at
+  30%, minimum variance realised more than equal weight after 2009, 2012 and
+  2015 (0.88, 0.74 and 0.79 against 0.73, 0.69 and 0.75), about the same after
+  2018 (0.770 against 0.772) and less after 2021 (0.34 against 0.53), when
+  bonds fell with equities. The capped tangency beat equal weight once, after
+  2015 (0.781 against 0.752).
+- **The weights move with the window.** The tangency portfolio chosen up to
+  2009 held 54.8% AGG, 21.9% GLD, 14.8% TLT, 7.4% EEM and 1.2% VNQ; the one
+  the years after 2015 would have chosen holds 49.6% SPY and 50.4% GLD. The
+  minimum-variance portfolio stays mostly AGG (80.6% to 91.1% chosen before a
+  split, 93.4% to 95.0% after).
+
+The held periods overlap (every one includes 2022 to 2026), so the five splits
+are five views of one history, not five independent trials. The ratios take a
+zero risk-free rate, which flatters every portfolio and the least volatile
+most; the factor attribution brings a measured rate. Nothing here charges
+trading costs.
+
 ## Parts
 
 | Part | State |
@@ -501,7 +614,8 @@ What they show:
 | Monte Carlo: multivariate normal, Student-t, stationary block bootstrap | done |
 | Risk metrics: Sharpe, Sortino, drawdown, VaR, CVaR, downside deviation | done |
 | Scenarios: allocation mixes, rebalancing, stress periods | done |
-| Efficient frontier, mean-variance, risk parity and CVaR optimisation | to come |
+| Efficient frontier and mean-variance optimiser, held out of sample | done |
+| Risk parity and CVaR optimisation | to come |
 | Fama-French factor attribution (Ken French data library) | to come |
 | Cost-aware backtest: transaction costs, spreads, rebalancing drag | to come |
 | Tableau extracts, dashboard spec and Plotly reproduction | to come |
