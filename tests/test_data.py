@@ -304,21 +304,33 @@ def test_the_cache_reads_back_exactly(tmp_path: Path) -> None:
     prices = fetch(frame)
     cache = write(tmp_path, prices)
     back = load_cache(cache)
-    pd.testing.assert_frame_equal(back, prices)
+    pd.testing.assert_frame_equal(back, prices, check_exact=True)
+
+
+def test_closes_of_full_precision_read_back_to_the_last_bit(tmp_path: Path) -> None:
+    # pandas' default float parser reads some numbers of 17 digits a last bit off.
+    frame = yahoo_frame()
+    rng = np.random.default_rng(0)
+    frame[("Close", "AAA")] = 100.0 * np.exp(rng.normal(0.0, 0.1, len(DAYS)))
+    frame[("Close", "BBB")] = rng.uniform(1.0, 1000.0, len(DAYS))
+    prices = fetch(frame)
+    back = load_cache(write(tmp_path, prices))
+    assert (back["close"].to_numpy() == prices["close"].to_numpy()).all()
+    pd.testing.assert_frame_equal(back, prices, check_exact=True)
 
 
 def test_a_ticker_of_digits_alone_reads_back_as_text(tmp_path: Path) -> None:
     prices = fetch(yahoo_frame(("0700", "1299")), ("0700", "1299"))
     back = load_cache(write(tmp_path, prices))
     assert list(dict.fromkeys(back["ticker"])) == ["0700", "1299"]
-    pd.testing.assert_frame_equal(back, prices)
+    pd.testing.assert_frame_equal(back, prices, check_exact=True)
 
 
 def test_whole_number_columns_are_written_as_floats(tmp_path: Path) -> None:
     prices = fetch(yahoo_frame())
     as_ints = prices.astype({"volume": "int64", "split": "int64"})
     back = load_cache(write(tmp_path, as_ints))
-    pd.testing.assert_frame_equal(back, prices)
+    pd.testing.assert_frame_equal(back, prices, check_exact=True)
 
 
 def test_a_true_or_false_column_is_still_refused(tmp_path: Path) -> None:

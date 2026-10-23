@@ -392,6 +392,9 @@ def load_cache(cache: Path = DEFAULT_CACHE) -> pd.DataFrame:
             # Read as text, or a ticker of digits alone would come back as a number.
             dtype={"date": str, "ticker": str} | {column: "float64" for column in COLUMNS[2:]},
             keep_default_na=False,
+            # The default parser reads some numbers a last bit off what was written
+            # (8,269 of the 43,760 closes of the 2005-2026 cache); this one is exact.
+            float_precision="round_trip",
         )
     except (ValueError, TypeError) as exc:
         raise DataError(f"{cache} cannot be parsed: {exc}") from None
