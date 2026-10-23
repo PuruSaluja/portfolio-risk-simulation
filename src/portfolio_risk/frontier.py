@@ -39,8 +39,8 @@ returns, rebalanced every close, at the same risk-free rate.
 
 ``python -m portfolio_risk.frontier`` gives the frontier, the minimum-variance and
 tangency portfolios and equal weights from the cache's daily total returns, and the
-same three chosen from the returns up to a split date and held after it: what
-the optimiser expected of them, and what they returned.
+same three chosen from the returns up to each of a few split dates and held after it:
+what the optimiser expected of them, and what they returned.
 """
 
 from __future__ import annotations
@@ -352,7 +352,9 @@ def estimates(daily: pd.DataFrame, estimator: Estimator = "sample") -> tuple:
 
 
 PORTFOLIOS = ("minimum_variance", "max_sharpe", "equal")
-DEFAULT_SPLIT = date(2015, 12, 31)
+# The ends of every third year from 2009: each split leaves at least four years on
+# either side.
+DEFAULT_SPLITS = tuple(date(year, 12, 31) for year in (2009, 2012, 2015, 2018, 2021))
 
 
 def _choose(
@@ -401,26 +403,65 @@ def _span(daily: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def _held_out(
+    daily: pd.DataFrame, split: date, estimator: Estimator, risk_free: float, max_weight: float
+) -> dict[str, Any]:
+    """The three portfolios chosen from the returns up to ``split`` and held after it."""
+    before = daily.loc[daily.index <= pd.Timestamp(split)]
+    after = daily.loc[daily.index > pd.Timestamp(split)]
+    funds = daily.shape[1]
+    # A covariance matrix of n funds needs more than n days to be positive definite.
+    if min(len(before), len(after)) <= funds:
+        raise ValueError(
+            f"a split on {split.isoformat()} leaves returns on {len(before)} days before it "
+            f"and {len(after)} after; each side needs more than {funds}, one per fund"
+        )
+    early = estimates(before, estimator)
+    late = estimates(after, estimator)
+    held = _choose(*early, risk_free, max_weight)
+    return {
+        "date": split.isoformat(),
+        "estimated_on": _span(before),
+        "held_on": _span(after),
+        "portfolios": {
+            name: {
+                **_described(w, *early, risk_free),
+                "realised": _realised(after, w, risk_free, before.index[-1]),
+            }
+            for name, w in held.items()
+        },
+        "chosen_after": {
+            name: _described(w, *late, risk_free)
+            for name, w in _choose(*late, risk_free, max_weight).items()
+            if name != "equal"
+        },
+    }
+
+
 def run(
     prices: pd.DataFrame,
     estimator: Estimator = "sample",
     max_weight: float = 1.0,
     points: int = 21,
     risk_free: float = 0.0,
-    split: date | None = DEFAULT_SPLIT,
+    splits: Sequence[date] = DEFAULT_SPLITS,
 ) -> dict[str, Any]:
-    """The frontier and three portfolios from the whole history, and, with a ``split``,
-    the same portfolios chosen from the returns up to that date and held after it.
+    """The frontier and three portfolios from the whole history, and for each of
+    ``splits`` the same portfolios chosen from the returns up to that date and held after.
 
     The three are the minimum-variance portfolio, the tangency portfolio and equal
-    weights. Held after the split, each is rebalanced to its weights at every close.
+    weights. Held after a split, each is rebalanced to its weights at every close.
     """
+    if len(set(splits)) != len(splits):
+        raise ValueError("a split date is given twice")
     daily = ret.total_returns(prices)
+    # Checked before the whole-history optimisation, so a bad date does not wait for it.
+    held_out = [_held_out(daily, split, estimator, risk_free, max_weight) for split in splits]
     expected, covariance = estimates(daily, estimator)
     chosen = _choose(expected, covariance, risk_free, max_weight)
     table = frontier(expected, covariance, points, max_weight)
     tickers = [str(t) for t in daily.columns]
-    result: dict[str, Any] = {
+    return {
         **_span(daily),
         "estimator": estimator,
         "max_weight": max_weight,
@@ -444,39 +485,8 @@ def run(
             }
             for _, row in table.iterrows()
         ],
-        "split": None,
+        "splits": held_out,
     }
-    if split is None:
-        return result
-    before = daily.loc[daily.index <= pd.Timestamp(split)]
-    after = daily.loc[daily.index > pd.Timestamp(split)]
-    # A covariance matrix of n funds needs more than n days to be positive definite.
-    if min(len(before), len(after)) <= len(tickers):
-        raise ValueError(
-            f"a split on {split.isoformat()} leaves returns on {len(before)} days before it "
-            f"and {len(after)} after; each side needs more than {len(tickers)}, one per fund"
-        )
-    early = estimates(before, estimator)
-    late = estimates(after, estimator)
-    held = _choose(*early, risk_free, max_weight)
-    result["split"] = {
-        "date": split.isoformat(),
-        "estimated_on": _span(before),
-        "held_on": _span(after),
-        "portfolios": {
-            name: {
-                **_described(w, *early, risk_free),
-                "realised": _realised(after, w, risk_free, before.index[-1]),
-            }
-            for name, w in held.items()
-        },
-        "chosen_after": {
-            name: _described(w, *late, risk_free)
-            for name, w in _choose(*late, risk_free, max_weight).items()
-            if name != "equal"
-        },
-    }
-    return result
 
 
 def _weights_text(weights: dict[str, float]) -> str:
@@ -502,40 +512,42 @@ def _print(result: dict[str, Any]) -> None:
             f"{row['expected_return']:>8.2%} {row['volatility']:>7.2%} "
             f"{row['sharpe_ratio']:>7.3f}  {_weights_text(row['weights'])}"
         )
-    split = result["split"]
-    if split is None:
-        return
-    first, then = split["estimated_on"], split["held_on"]
-    print(
-        f"\nchosen from {first['first_return']} to {first['last_return']}, held from "
-        f"{then['first_return']} to {then['last_return']}: expected, then realised"
-    )
-    print(
-        f"{'':18} {'expected':>8} {'vol':>7} {'Sharpe':>7} | {'mean':>7} {'vol':>7} "
-        f"{'Sharpe':>7} {'compound':>8}"
-    )
-    for name, p in split["portfolios"].items():
-        r = p["realised"]
-        sharpe_text = "-" if r["sharpe_ratio"] is None else f"{r['sharpe_ratio']:.3f}"
+    for split in result["splits"]:
+        first, then = split["estimated_on"], split["held_on"]
         print(
-            f"{name:18} {p['expected_return']:>8.2%} {p['volatility']:>7.2%} "
-            f"{p['sharpe_ratio']:>7.3f} | {r['mean']:>7.2%} {r['volatility']:>7.2%} "
-            f"{sharpe_text:>7} {r['compound_return']:>8.2%}"
+            f"\nchosen from {first['first_return']} to {first['last_return']}, held from "
+            f"{then['first_return']} to {then['last_return']}: expected, then realised"
         )
-    for name, p in split["portfolios"].items():
-        if name != "equal":
-            print(f"  {name} chosen before: {_weights_text(p['weights'])}")
-            later = split["chosen_after"][name]["weights"]
-            print(f"  {name} chosen after:  {_weights_text(later)}")
+        print(
+            f"{'':18} {'expected':>8} {'vol':>7} {'Sharpe':>7} | {'mean':>7} {'vol':>7} "
+            f"{'Sharpe':>7} {'compound':>8}"
+        )
+        for name, p in split["portfolios"].items():
+            r = p["realised"]
+            sharpe_text = "-" if r["sharpe_ratio"] is None else f"{r['sharpe_ratio']:.3f}"
+            print(
+                f"{name:18} {p['expected_return']:>8.2%} {p['volatility']:>7.2%} "
+                f"{p['sharpe_ratio']:>7.3f} | {r['mean']:>7.2%} {r['volatility']:>7.2%} "
+                f"{sharpe_text:>7} {r['compound_return']:>8.2%}"
+            )
+        for name, p in split["portfolios"].items():
+            if name != "equal":
+                print(f"  {name} chosen before: {_weights_text(p['weights'])}")
+                later = split["chosen_after"][name]["weights"]
+                print(f"  {name} chosen after:  {_weights_text(later)}")
 
 
-def _split(text: str) -> date | None:
-    if text.strip().lower() == "none":
-        return None
+def _splits(texts: Sequence[str] | None) -> tuple[date, ...]:
+    if texts is None:
+        return DEFAULT_SPLITS
+    if [text.strip().lower() for text in texts] == ["none"]:
+        return ()
     try:
-        return date.fromisoformat(text.strip())
+        return tuple(date.fromisoformat(text.strip()) for text in texts)
     except ValueError:
-        raise ValueError(f"a split is a date such as 2015-12-31, or none, not {text!r}") from None
+        raise ValueError(
+            f"a split is a date such as 2015-12-31, or none alone, not {' '.join(texts)!r}"
+        ) from None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -560,19 +572,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--split",
-        default=DEFAULT_SPLIT.isoformat(),
+        action="append",
         help="choose the portfolios from the returns up to this date and hold them after "
-        f"it (default {DEFAULT_SPLIT.isoformat()}; none to skip)",
+        "it; may be given more than once (default: "
+        f"{', '.join(d.isoformat() for d in DEFAULT_SPLITS)}; none for no split)",
     )
     parser.add_argument("--json", type=Path, help="also write the figures to this file")
     args = parser.parse_args(argv)
     try:
-        split = _split(args.split)
+        splits = _splits(args.split)
         prices = load_cache(args.cache)
         sha256 = read_manifest(args.cache)["sha256"]
         result = {
             "cache_sha256": sha256,
-            **run(prices, args.covariance, args.max_weight, args.points, args.risk_free, split),
+            **run(prices, args.covariance, args.max_weight, args.points, args.risk_free, splits),
         }
         # Written before anything is printed, so a failure leaves no half-finished run.
         if args.json:

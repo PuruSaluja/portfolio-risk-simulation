@@ -387,11 +387,11 @@ def cache(tmp_path: Path, flat: str | None = None) -> Path:
     return path
 
 
-def test_the_command_prints_and_writes_the_frontier_and_the_split(tmp_path: Path, capsys) -> None:
+def test_the_command_prints_and_writes_the_frontier_and_the_splits(tmp_path: Path, capsys) -> None:
     out = tmp_path / "results" / "frontier.json"
     path = cache(tmp_path)
     argv = ["--cache", str(path), "--json", str(out), "--split", "2023-12-29"]
-    assert main([*argv, "--points", "5"]) == 0
+    assert main([*argv, "--split", "2024-06-28", "--points", "5"]) == 0
     printed = capsys.readouterr().out
     assert "chosen from 2023-01-03 to 2023-12-29, held from 2024-01-01 to 2024-12-31" in printed
     assert b"\r" not in out.read_bytes()
@@ -413,7 +413,9 @@ def test_the_command_prints_and_writes_the_frontier_and_the_split(tmp_path: Path
     assert len(written["frontier"]) == 5
     assert written["frontier"][0]["weights"] == pytest.approx(least.to_dict(), abs=1e-15)
     assert written["frontier"][-1]["expected_return"] == pytest.approx(expected.max())
-    split = written["split"]
+    assert [s["date"] for s in written["splits"]] == ["2023-12-29", "2024-06-28"]
+    assert written["splits"][1]["held_on"]["first_return"] == "2024-07-01"
+    split = written["splits"][0]
     assert split["estimated_on"] == {
         "first_return": "2023-01-03",
         "last_return": "2023-12-29",
@@ -443,7 +445,7 @@ def test_the_command_takes_a_cap_a_rate_and_the_shrunk_covariance(tmp_path: Path
     path = cache(tmp_path)
     assert main(["--cache", str(path), "--json", str(out), "--split", "none"]) == 0
     plain = json.loads(out.read_text(encoding="utf-8"))
-    assert plain["split"] is None
+    assert plain["splits"] == []
     argv = ["--cache", str(path), "--json", str(out), "--split", "2023-12-29"]
     argv += ["--max-weight", "0.6", "--risk-free", "0.02", "--covariance", "ledoit-wolf"]
     assert main(argv) == 0
@@ -474,7 +476,7 @@ def test_the_command_takes_a_cap_a_rate_and_the_shrunk_covariance(tmp_path: Path
     # Chosen from the shrunk estimates before the split; expected figures from the same.
     before, after = daily.loc[:"2023-12-29"], daily.loc["2024-01-01":]
     early = fr.estimates(before, "ledoit-wolf")
-    entry = capped["split"]["portfolios"]["max_sharpe"]
+    entry = capped["splits"][0]["portfolios"]["max_sharpe"]
     held = fr.max_sharpe(*early, 0.02, 0.6)
     assert entry["weights"] == held.to_dict()
     mean, sd = fr.moments(held, *early)
@@ -490,7 +492,9 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
     assert "manifest.json is missing" in capsys.readouterr().err
     path = cache(tmp_path)
     for argv, message in [
-        ([], "leaves returns on 0 days before it"),  # the default split precedes the data
+        ([], "on 2009-12-31 leaves returns on 0 days before it"),  # the default splits
+        (["--split", "2023-12-29", "--split", "2023-12-29"], "given twice"),
+        (["--split", "2023-12-29", "--split", "none"], "or none alone"),
         (["--split", "2024-12-27"], "and 2 after; each side needs more than 3"),
         (["--split", "2023-13-01"], "a split is a date"),
         (["--split", "none", "--max-weight", "0.3"], "cannot add up to 1"),
