@@ -905,13 +905,11 @@ What they show:
   mostly AGG, which returned 2.32% a year after 2009 and -0.64% after 2021.
 
 **The ratios are against a zero rate, which flatters the low-risk
-portfolios most.** A side check with `risk.sharpe_ratio` against the daily
-bill rate (the six whole-history portfolios, to 31 August 2026, where the
-factor cache ends) gives tangency 0.76, risk parity 0.61, inverse volatility
-0.59, equal weight 0.53, minimum CVaR 0.44 and minimum variance 0.43,
-against 1.01, 0.82, 0.77, 0.66, 0.78 and 0.77 at zero over the same days:
-44.1% and 44.7% lower for the two AGG-heavy portfolios, 19.0% for equal
-weight. The held periods overlap, so the five splits are five views of one
+portfolios most.** This command, like the frontier's, takes only a constant
+rate so far. Against the daily bill, AGG's own Sharpe ratio falls from 0.57
+to 0.26 and equal weight's from 0.64 to 0.53 (see the risk measures), so the
+AGG-heavy portfolios here, minimum variance and minimum CVaR, can be expected
+to lose the most; that is not yet measured here. The held periods overlap, so the five splits are five views of one
 history, and nothing here charges trading costs.
 
 ## Parts
