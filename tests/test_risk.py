@@ -487,3 +487,15 @@ def test_bills_missing_a_day_the_prices_have_are_refused(tmp_path: Path, capsys)
     argv = ["--cache", str(cache(tmp_path)), "--factors", str(factors), "--risk-free", "bills"]
     assert main(argv) == 1
     assert "2023-06-14 is in the returns only" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("text", ["Bills", "bill", "two percent", ""])
+def test_a_risk_free_rate_that_is_neither_a_number_nor_bills_is_refused_plainly(
+    text, capsys
+) -> None:
+    with pytest.raises(SystemExit) as exit_:
+        main(["--risk-free", text])
+    assert exit_.value.code == 2
+    err = capsys.readouterr().err
+    assert f"a compound annual rate such as 0.02, or bills, not {text!r}" in err
+    assert "_risk_free_argument" not in err

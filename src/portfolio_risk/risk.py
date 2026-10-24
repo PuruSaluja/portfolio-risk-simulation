@@ -378,7 +378,14 @@ def _print(result: dict[str, Any]) -> None:
 
 
 def _risk_free_argument(text: str) -> float | str:
-    return BILLS if text == BILLS else float(text)
+    if text == BILLS:
+        return BILLS
+    try:
+        return float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"a compound annual rate such as 0.02, or {BILLS}, not {text!r}"
+        ) from None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
