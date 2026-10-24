@@ -511,12 +511,14 @@ Each portfolio is the exact solution of its quadratic programme, by a primal
 active-set method written in numpy. The tangency portfolio is found by
 bisection on the tangency condition along the frontier, since near its peak
 the ratio itself is too flat to search on. The tests check every portfolio
-against brute force (the lowest variance over every pattern of funds at zero,
-at the cap or free; the best tangency over every set of funds held, to 1e-12
-in the weights), against closed forms where no bound binds, and on expected
-returns that differ only in the ninth decimal. On the real data scipy's SLSQP
-finds the same portfolios: variances within 3e-15 of these, relative, and
-tangency ratios equal to 15 significant digits.
+against brute force: the lowest variance over every pattern of funds at zero,
+at the cap or free; for the tangency, the best ratio over every set of funds
+held, and with a cap the homogenised problem over every pattern, to 1e-12 in
+the weights. They also check closed forms where no bound binds, and expected
+returns as little as 1e-11 apart.
+On the real data scipy's SLSQP finds the same portfolios: variances within
+4e-15 of these, relative, and tangency ratios equal to 14 significant digits,
+these never the lower.
 
 ```bash
 python -m portfolio_risk.frontier --json results/frontier.json
