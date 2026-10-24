@@ -1,10 +1,15 @@
+import json
 import math
+from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from portfolio_risk.data import COLUMNS as data_columns
 from portfolio_risk.data import DataError
+from portfolio_risk.data import write_cache as write_prices
 from portfolio_risk.factors import (
     LABELS,
     MODELS,
@@ -12,10 +17,17 @@ from portfolio_risk.factors import (
     attribution,
     excess_returns,
     fit_model,
+    main,
     newey_west_lags,
     regress,
+    run,
     summary,
 )
+from portfolio_risk.french import COLUMNS as factor_columns
+from portfolio_risk.french import daily_risk_free, load_factors
+from portfolio_risk.french import write_cache as write_factors
+
+MODELS_FIVE = ["Mkt-RF", "SMB", "HML", "RMW", "CMA"]
 
 DAYS = pd.bdate_range("2020-01-01", periods=400)
 
@@ -245,3 +257,128 @@ def test_align_refuses_tables_with_no_day_in_common() -> None:
     returns = pd.DataFrame({"A": [0.0]}, index=DAYS[300:301])
     with pytest.raises(DataError, match="no common days"):
         align(returns, factor_frame(10))
+
+
+PRICE_DAYS = pd.bdate_range("2023-01-02", "2024-12-31")
+
+
+def prices() -> pd.DataFrame:
+    rng = np.random.default_rng(0)
+    rows = []
+    for i, ticker in enumerate(["AAA", "BBB"]):
+        close = 50.0 * np.cumprod(1 + rng.normal(0.0003, 0.01 * (1 + i), len(PRICE_DAYS)))
+        for day, value in zip(PRICE_DAYS, close, strict=True):
+            rows.append((day.date(), ticker, float(value), 0.0, 0.0, 0.0, 1e6))
+    return pd.DataFrame(rows, columns=list(data_columns))
+
+
+def factor_table(end="2024-11-30", market_from=None) -> pd.DataFrame:
+    """Factors in percent, as the cache holds them, over the price days up to ``end``;
+    ``mkt_rf`` is ``market_from``'s excess return when given, so it explains it exactly."""
+    days = PRICE_DAYS[end >= PRICE_DAYS]
+    rng = np.random.default_rng(1)
+    table = pd.DataFrame(
+        np.round(rng.normal(0, 1, (len(days), 6)), 2),
+        columns=["mkt_rf", "smb", "hml", "smb5", "rmw", "cma"],
+    )
+    table.insert(0, "date", days.date)
+    month = days.month + 12 * (days.year - 2023)
+    table["rf"] = 0.02
+    table["rf_month"] = np.round(0.30 + 0.01 * month.to_numpy(), 2)
+    if market_from is not None:
+        fractions = table.set_index(pd.DatetimeIndex(table["date"]))[["rf_month"]] / 100
+        rate = daily_risk_free(fractions)
+        returns = market_from.loc[days[1:]]
+        table.loc[1:, "mkt_rf"] = ((returns - rate.loc[days[1:]]) * 100).to_numpy()
+    return table[list(factor_columns)]
+
+
+def caches(tmp_path: Path, **kwargs) -> tuple[Path, Path]:
+    price_path = tmp_path / "prices.csv"
+    write_prices(prices(), price_path, start=date(2023, 1, 1), end=date(2024, 12, 31), source="t")
+    factor_path = tmp_path / "factors.csv"
+    write_factors(
+        factor_table(**kwargs),
+        factor_path,
+        start=date(2023, 1, 1),
+        end=date(2024, 12, 31),
+        vintages={},
+    )
+    return price_path, factor_path
+
+
+def daily_total(table: pd.DataFrame) -> pd.DataFrame:
+    close = table.pivot(index="date", columns="ticker", values="close")[["AAA", "BBB"]]
+    daily = (close / close.shift(1) - 1).iloc[1:]
+    daily.index = pd.DatetimeIndex(daily.index)
+    daily.columns.name = None
+    return daily
+
+
+def test_the_command_fits_every_series_against_the_monthly_bill_rate(
+    tmp_path: Path, capsys
+) -> None:
+    price_path, factor_path = caches(tmp_path)
+    out = tmp_path / "results" / "factors.json"
+    argv = ["--cache", str(price_path), "--factors", str(factor_path), "--json", str(out)]
+    assert main(argv + ["--weights", "AAA=0.7,BBB=0.3"]) == 0
+    printed = capsys.readouterr().out
+    # The factors end a month before the prices: the days both hold.
+    assert "499 daily returns, 2023-01-03 to 2024-11-29" in printed
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["series"].keys() == {"AAA", "BBB", "portfolio"}
+    assert written["series"]["AAA"].keys() == {"ff3", "ff5"}
+    assert written["models"] == {
+        "ff3": ["Mkt-RF", "SMB", "HML"],
+        "ff5": ["Mkt-RF", "SMB", "HML", "RMW", "CMA"],
+    }
+    assert written["weights"] == {"AAA": 0.7, "BBB": 0.3}
+    assert b"\r" not in out.read_bytes()
+    # The same fit, by hand: each day's return less the day's bill rate.
+    factors = load_factors(factor_path)
+    daily = daily_total(prices()).loc["2023-01-03":"2024-11-29"]
+    rate = daily_risk_free(factors).loc[daily.index]
+    portfolio = (daily @ [0.7, 0.3]) - rate
+    x = factors.loc[daily.index, ["mkt_rf", "smb5", "hml", "rmw", "cma"]]
+    expected = summary(regress(portfolio, x.set_axis(MODELS_FIVE, axis=1)))
+    got = written["series"]["portfolio"]["ff5"]
+    assert got["coefficients"]["alpha"]["estimate"] == pytest.approx(
+        expected["coefficients"]["alpha"]["estimate"], rel=1e-10
+    )
+    assert got["r_squared"] == pytest.approx(expected["r_squared"], rel=1e-12)
+    years = len(rate) / 252
+    assert written["risk_free_compound"] == pytest.approx(
+        np.prod(1 + rate) ** (1 / years) - 1, rel=1e-12
+    )
+
+
+def test_a_market_factor_built_from_a_fund_explains_it_exactly(tmp_path: Path) -> None:
+    price_path, factor_path = caches(tmp_path, market_from=daily_total(prices())["AAA"])
+    out = tmp_path / "factors.json"
+    argv = ["--cache", str(price_path), "--factors", str(factor_path), "--json", str(out)]
+    assert main(argv + ["--model", "ff3"]) == 0
+    fit = json.loads(out.read_text(encoding="utf-8"))["series"]["AAA"]["ff3"]
+    assert fit["coefficients"]["Mkt-RF"]["estimate"] == pytest.approx(1.0, abs=1e-12)
+    assert fit["coefficients"]["alpha"]["estimate"] == pytest.approx(0.0, abs=1e-12)
+    assert fit["r_squared"] == pytest.approx(1.0, abs=1e-12)
+
+
+def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
+    price_path, factor_path = caches(tmp_path)
+    base = ["--cache", str(price_path), "--factors", str(factor_path)]
+    for argv, message in [
+        (["--model", "ff4"], "unknown model 'ff4'"),
+        (["--model", "ff3", "--model", "ff3"], "named twice"),
+        (["--weights", "AAA=2"], "add up to 1"),
+        (["--factors", str(tmp_path / "none.csv")], "manifest.json is missing"),
+        (["--json", str(tmp_path)], ""),  # a folder
+    ]:
+        assert main(base + argv) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("error: ") and message in captured.err
+
+
+def test_run_needs_a_model() -> None:
+    with pytest.raises(ValueError, match="at least one model"):
+        run(prices(), pd.DataFrame(), models=())

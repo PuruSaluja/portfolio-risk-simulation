@@ -25,19 +25,31 @@ The factors are US equity factors, built from NYSE, AMEX and NASDAQ stocks. For 
 holding other assets (bonds, gold, stocks outside the US) the regression still measures
 how its returns moved with them, but a low R-squared there says the factors do not
 describe the fund, and its alpha is not a measure of skill.
+
+``python -m portfolio_risk.factors`` fits each model to every fund in the price cache
+and to a portfolio of them rebalanced daily, over the days both caches cover, against
+the daily risk-free rate ``french.daily_risk_free`` gives; ``--json`` writes the
+figures to a file.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import math
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from portfolio_risk.data import DataError
+from portfolio_risk import french
+from portfolio_risk import returns as ret
+from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest
+from portfolio_risk.montecarlo import check_weights, historical_portfolio_returns, parse_weights
 from portfolio_risk.returns import TRADING_DAYS_PER_YEAR
 
 MODELS: dict[str, tuple[str, ...]] = {
@@ -213,3 +225,108 @@ def fit_model(excess: pd.Series, factors: pd.DataFrame, model: str) -> Regressio
     columns: Sequence[str] = MODELS[model]
     x = factors[list(columns)].rename(columns=LABELS)
     return regress(excess, x)
+
+
+def run(
+    prices: pd.DataFrame,
+    factors: pd.DataFrame,
+    weights_text: str = "equal",
+    models: Sequence[str] = tuple(MODELS),
+) -> dict[str, Any]:
+    """Every model fitted to each fund's daily excess return and to the portfolio's.
+
+    The portfolio is rebalanced to its weights at every close. The days are those both
+    caches hold; the risk-free rate is ``french.daily_risk_free``'s.
+    """
+    if not models:
+        raise ValueError("needs at least one model")
+    if len(set(models)) != len(models):
+        raise ValueError("a model is named twice")
+    for model in models:
+        if model not in MODELS:
+            raise ValueError(f"unknown model {model!r}; choose from {', '.join(MODELS)}")
+    daily = ret.total_returns(prices)
+    tickers = [str(t) for t in daily.columns]
+    weights = parse_weights(weights_text, tickers)
+    series = daily.assign(portfolio=historical_portfolio_returns(daily, weights))
+    # From every day of each month, before the first is dropped for want of a return.
+    rate = french.daily_risk_free(factors)
+    series, factors = align(series, factors)
+    rate = rate.loc[series.index]
+    excess = excess_returns(series, rate)
+    out = {
+        name: {model: summary(fit_model(excess[name], factors, model)) for model in models}
+        for name in excess.columns
+    }
+    years = len(rate) / TRADING_DAYS_PER_YEAR
+    return {
+        "first_return": series.index[0].date().isoformat(),
+        "last_return": series.index[-1].date().isoformat(),
+        "daily_returns": len(series),
+        # The bill's compound rate over the days used, 252 of them a year.
+        "risk_free_compound": float(np.prod(1.0 + rate.to_numpy()) ** (1.0 / years) - 1.0),
+        "weights": dict(zip(tickers, check_weights(weights, tickers).tolist(), strict=True)),
+        "models": {model: [LABELS[c] for c in MODELS[model]] for model in models},
+        "series": out,
+    }
+
+
+def _print(result: dict[str, Any]) -> None:
+    weights = ", ".join(f"{t} {w:.1%}" for t, w in result["weights"].items() if w > 0)
+    print(
+        f"{result['daily_returns']} daily returns, {result['first_return']} to "
+        f"{result['last_return']}; one-month T-bill {result['risk_free_compound']:.2%} a year"
+    )
+    print(f"portfolio, rebalanced daily: {weights}")
+    print("alpha a year, betas per unit of factor; Newey-West t-statistics in brackets")
+    for model, names in result["models"].items():
+        print()
+        print(f"{model:10}" + "".join(f" {n:>15}" for n in ["alpha", *names]) + f" {'R2':>6}")
+        for name, fits in result["series"].items():
+            fit = fits[model]
+            cells = []
+            for i, c in enumerate(fit["coefficients"].values()):
+                value = f"{c['estimate']:.2%}" if i == 0 else f"{c['estimate']:.3f}"
+                cells.append(f"{value} ({c['newey_west_t']:.1f})")
+            print(f"{name:10}" + "".join(f" {c:>15}" for c in cells) + f" {fit['r_squared']:>6.3f}")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m portfolio_risk.factors", description=__doc__.splitlines()[0]
+    )
+    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--factors", type=Path, default=french.DEFAULT_CACHE)
+    parser.add_argument(
+        "--weights", default="equal", help='"equal" (the default) or e.g. SPY=0.6,AGG=0.4'
+    )
+    parser.add_argument(
+        "--model",
+        action="append",
+        help=f"{' or '.join(MODELS)}; may be given more than once (default: both)",
+    )
+    parser.add_argument("--json", type=Path, help="also write the figures to this file")
+    args = parser.parse_args(argv)
+    try:
+        prices = load_cache(args.cache)
+        factors = french.load_factors(args.factors)
+        result = {
+            "cache_sha256": read_manifest(args.cache)["sha256"],
+            "factors_sha256": french.read_manifest(args.factors)["sha256"],
+            **run(prices, factors, args.weights, args.model or tuple(MODELS)),
+        }
+        # Written before anything is printed, so a failure leaves no half-finished run.
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.json, "w", encoding="utf-8", newline="\n") as out:
+                json.dump(result, out, indent=2, allow_nan=False)
+                out.write("\n")
+    except (DataError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    _print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
