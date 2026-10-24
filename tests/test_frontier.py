@@ -530,3 +530,52 @@ def test_a_cap_of_one_over_n_in_floating_point_is_met_exactly(n) -> None:
     for w in (fr.minimum_variance(covariance, cap), fr.max_sharpe(mu, covariance, 0.0, cap)):
         assert (w <= cap).all()
         assert w.sum() == pytest.approx(1.0, abs=1e-14)
+
+
+def capped_tangency_by_pattern(mu, covariance, cap, rate=0.0):
+    """The capped tangency portfolio from the homogenised problem: the lowest y'Sy with
+    (mu - r)'y = 1 and 0 <= y <= cap * sum(y), over every pattern of funds at 0, at the
+    cap or free; the portfolio is y / sum(y)."""
+    s = covariance.to_numpy()
+    excess = mu.to_numpy() - rate
+    n = len(excess)
+    best, best_w = math.inf, None
+    for pattern in itertools.product((0, 1, 2), repeat=n):
+        rows, rhs = [excess], [1.0]
+        for i, state in enumerate(pattern):
+            row = np.zeros(n)
+            if state == 0:
+                row[i] = 1.0
+            elif state == 1:
+                row = -cap * np.ones(n)
+                row[i] += 1.0
+            else:
+                continue
+            rows.append(row)
+            rhs.append(0.0)
+        a = np.array(rows)
+        kkt = np.block([[2 * s, a.T], [a, np.zeros((len(rows),) * 2)]])
+        y = np.linalg.lstsq(kkt, np.concatenate([np.zeros(n), rhs]), rcond=None)[0][:n]
+        total = y.sum()
+        feasible = (
+            total > 0
+            and (y >= -1e-12 * total).all()
+            and (y <= cap * total + 1e-12 * total).all()
+            and np.allclose(a @ y, rhs, atol=1e-10)
+        )
+        if feasible and y @ s @ y < best:
+            best, best_w = y @ s @ y, y / total
+    return best_w
+
+
+@pytest.mark.parametrize("seed", range(8))
+@pytest.mark.parametrize("cap", [0.3, 0.45])
+def test_a_capped_tangency_portfolio_is_the_best_over_every_pattern_of_bounds(seed, cap) -> None:
+    mu, covariance = problem(5, seed)
+    for risk_free in (0.0, 0.02):
+        rate = (1 + risk_free) ** (1 / 252) * 252 - 252
+        if mu.max() <= rate:
+            continue
+        expected = capped_tangency_by_pattern(mu, covariance, cap, rate)
+        w = fr.max_sharpe(mu, covariance, risk_free, cap)
+        assert w.to_numpy() == pytest.approx(expected, abs=1e-12)
