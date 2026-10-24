@@ -99,8 +99,9 @@ def _cap(max_weight: float, n: int) -> float:
         or not 0.0 < max_weight <= 1.0
     ):
         raise ValueError(f"max_weight must be above 0 and at most 1, not {max_weight!r}")
-    # A little room for caps such as 1/3 that only add up to 1 in exact arithmetic.
-    if max_weight * n < 1.0 - 1e-12:
+    # Room only for the rounding of a cap of 1/n (1/49 times 49 is a last bit below 1):
+    # a cap any further short cannot add up to 1, and equal weights would break it.
+    if max_weight * n < 1.0 - 1e-15:
         raise ValueError(
             f"{n} funds capped at {max_weight:g} cannot add up to 1 (the cap is at least 1/{n})"
         )
@@ -351,7 +352,6 @@ def estimates(daily: pd.DataFrame, estimator: Estimator = "sample") -> tuple:
     return expected, cov.annualise(matrix, days)
 
 
-PORTFOLIOS = ("minimum_variance", "max_sharpe", "equal")
 # The ends of every third year from 2009: each split leaves at least four years on
 # either side.
 DEFAULT_SPLITS = tuple(date(year, 12, 31) for year in (2009, 2012, 2015, 2018, 2021))

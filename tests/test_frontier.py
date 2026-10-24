@@ -510,3 +510,23 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         assert "Traceback" not in captured.err
     assert main(["--cache", str(cache(tmp_path / "flat", "BBB")), "--split", "none"]) == 1
     assert "BBB has a variance of 0.0" in capsys.readouterr().err
+
+
+def test_a_cap_short_of_one_over_n_is_refused_however_little() -> None:
+    # 0.333333333333 is 1e-12 short of 1/3: three such weights cannot add up to 1, and
+    # equal weights would break it.
+    mu, covariance = problem(3, seed=0)
+    with pytest.raises(ValueError, match="cannot add up to 1"):
+        fr.minimum_variance(covariance, 0.333333333333)
+    with pytest.raises(ValueError, match="cannot add up to 1"):
+        fr.max_sharpe(mu, covariance, max_weight=0.3333333333333)
+
+
+@pytest.mark.parametrize("n", [3, 7, 49, 98])
+def test_a_cap_of_one_over_n_in_floating_point_is_met_exactly(n) -> None:
+    # 1/49 times 49 is a last bit below 1 in floating point.
+    mu, covariance = problem(n, seed=1)
+    cap = 1 / n
+    for w in (fr.minimum_variance(covariance, cap), fr.max_sharpe(mu, covariance, 0.0, cap)):
+        assert (w <= cap).all()
+        assert w.sum() == pytest.approx(1.0, abs=1e-14)
