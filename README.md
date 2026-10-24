@@ -5,10 +5,9 @@ daily market data.
 
 > **Status:** in progress. The data ingestion, the returns and covariance
 > engine, the Monte Carlo simulation, the risk measures, the scenario engine,
-> the mean-variance optimiser and the factor attribution are done; the parts
-> below are built in
-> order, and every figure this README gives comes from a run of the committed
-> code.
+> the mean-variance optimiser, the factor attribution, and risk parity and
+> minimum CVaR are done; the parts below are built in order, and every figure
+> this README gives comes from a run of the committed code.
 
 ## The data is real
 
@@ -797,6 +796,124 @@ widens the error of a mean. Daily regressions over one 21-year window describe
 these funds over that window; with no alpha's t-statistic above 2.6, none here
 is evidence that it will persist.
 
+## Risk parity and minimum CVaR
+
+[`construction.py`](src/portfolio_risk/construction.py) builds two kinds of
+portfolio that, unlike the tangency portfolio, need no expected returns:
+
+- **Risk parity** (equal risk contribution): each fund contributes the same
+  share of the portfolio's variance, `w_i (S w)_i / w' S w = 1/n`. The weights
+  come from Spinu's (2013) convex form, minimised by Newton's method; the
+  answer is unique. **Inverse volatility**, weights proportional to one over
+  each fund's volatility, is the same thing for uncorrelated funds and is
+  shown beside it.
+- **Minimum CVaR**: the portfolio whose historical expected shortfall of one
+  day's return at 95%, the mean of the worst 5% of days, is lowest: Rockafellar
+  and Uryasev's (2000) linear programme over 5,469 days, solved by HiGHS through
+  scipy (the project's one optimiser that is not its own code).
+
+The tests check that risk parity's contributions are equal to 1e-12 for up to
+50 funds, any risk budgets, and that it reduces to inverse volatility when
+correlations are equal; and that the CVaR programme's optimum is the
+expected shortfall `risk.expected_shortfall` gives its weights, that no
+portfolio on a 1% grid of three funds has a lower one, and that its threshold
+is the value at risk. On the real returns the two agree to 4e-18.
+
+```bash
+python -m portfolio_risk.construction --json results/construction.json
+```
+
+The command compares six portfolios: equal weight, inverse volatility, risk
+parity, and the frontier's minimum-variance and tangency portfolios beside
+minimum CVaR, each chosen from the whole history and from the returns up to
+each of the frontier's five split dates, then held after it, rebalanced every
+close. The covariance is the sample one and Sharpe ratios are against a zero
+rate, as in the frontier section.
+
+### Results
+
+In sample, 4 January 2005 to 30 September 2026
+([`results/construction.json`](results/construction.json)); CVaR is of one
+day's return at 95%, and "top risk" is the largest share of the portfolio's
+variance any one fund contributes:
+
+| Portfolio | Volatility | Sharpe | Compound return | Max drawdown | CVaR | Top risk |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Equal weight | 13.83% | 0.64 | 8.22% | -38.3% | 2.05% | 22.0% |
+| Inverse volatility | 9.37% | 0.75 | 6.79% | -25.6% | 1.37% | 17.0% |
+| Risk parity | 8.21% | 0.80 | 6.41% | -23.2% | 1.19% | 12.5% |
+| Minimum variance | 5.01% | 0.74 | 3.66% | -17.4% | 0.71% | 91.5% |
+| Tangency | 6.82% | 0.99 | 6.71% | -17.2% | 0.98% | 41.1% |
+| Minimum CVaR | 5.02% | 0.75 | 3.72% | -17.4% | 0.71% | 90.9% |
+
+Risk parity holds 35.8% AGG, 20.6% TLT, 11.9% GLD and 5.3% to 7.8% of each
+equity fund; minimum CVaR holds 90.9% AGG, 6.6% SPY and 2.4% GLD, close to
+minimum variance's 91.5%, 6.8% and 1.6%.
+
+Held after each split, chosen from the returns before it:
+
+| Sharpe ratio held after | Equal weight | Inverse volatility | Risk parity | Minimum variance | Tangency | Minimum CVaR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2009 | 0.73 | 0.82 | 0.75 | 0.68 | 0.64 | 0.79 |
+| 2012 | 0.69 | 0.70 | 0.59 | 0.52 | 0.46 | 0.63 |
+| 2015 | 0.75 | 0.76 | 0.66 | 0.53 | 0.67 | 0.60 |
+| 2018 | 0.77 | 0.75 | 0.65 | 0.47 | 0.71 | 0.52 |
+| 2021 | 0.53 | 0.43 | 0.27 | 0.12 | 0.36 | 0.10 |
+
+| CVaR held after | Equal weight | Inverse volatility | Risk parity | Minimum variance | Tangency | Minimum CVaR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2009 | 1.69% | 1.15% | 1.08% | 0.77% | 1.01% | 0.72% |
+| 2012 | 1.64% | 1.17% | 1.11% | 0.74% | 0.98% | 0.72% |
+| 2015 | 1.73% | 1.24% | 1.15% | 0.79% | 0.96% | 0.77% |
+| 2018 | 1.89% | 1.37% | 1.26% | 0.89% | 1.04% | 0.86% |
+| 2021 | 1.71% | 1.32% | 1.28% | 0.87% | 1.13% | 0.86% |
+
+| Compound return held after | Equal weight | Inverse volatility | Risk parity | Minimum variance | Tangency | Minimum CVaR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2009 | 8.11% | 6.27% | 5.36% | 3.47% | 4.25% | 3.81% |
+| 2012 | 7.31% | 5.34% | 4.18% | 2.50% | 2.86% | 3.06% |
+| 2015 | 8.50% | 6.18% | 4.99% | 2.74% | 4.24% | 3.05% |
+| 2018 | 9.56% | 6.78% | 5.40% | 2.69% | 5.01% | 2.94% |
+| 2021 | 5.92% | 3.69% | 2.14% | 0.55% | 2.61% | 0.43% |
+
+What they show:
+
+- **Equal weight is risk-concentrated.** In sample, the five equity and REIT
+  funds contribute 94.7% of its variance (EEM 22.0%, VNQ 21.2%), the bonds
+  next to nothing (TLT -0.9%, a hedge). Risk parity spreads it evenly and,
+  over the whole history, has a higher Sharpe ratio (0.80 against 0.64) with
+  a drawdown of -23.2% against -38.3%.
+- **Out of sample, the simpler rule did better.** Inverse volatility had a
+  higher held Sharpe ratio than risk parity after every split, and the best
+  of all six after 2009, 2012 and 2015; equal weight was best after 2018 and
+  2021. Risk parity beat equal weight only after 2009 (0.75 against 0.73). It
+  holds more TLT (22.1% to 28.5% when chosen) than inverse volatility (13.1%
+  to 17.6%), and TLT's share of its risk, 12.5% by construction in the data
+  it was chosen from, was 25.6% to 38.3% after each split. TLT's correlation
+  with SPY was higher after every split than before it (-0.35 to -0.45
+  before, -0.28 to 0.11 after) and its volatility higher after four of the
+  five, so the bonds hedged less than the weights assumed.
+- **Minimum CVaR did what it aims at, by a little.** Held after every split
+  its daily CVaR was lower than minimum variance's (0.72% against 0.77% after
+  2009, 0.86% against 0.87% after 2021), as was its volatility; its Sharpe
+  ratio was higher after four of the five (not after 2021, 0.10 against
+  0.12), and its drawdown shallower after four (after 2021, -16.85% against
+  -16.79%). The two portfolios' weights differ by at most 2.4 to 7.9 points
+  in any fund, so the gaps are small.
+- **No construction beat equal weight's compound return** after any split,
+  as the frontier section found for its three: the low-risk portfolios held
+  mostly AGG, which returned 2.32% a year after 2009 and -0.64% after 2021.
+
+**The ratios are against a zero rate, which flatters the low-risk
+portfolios most.** A side check with `risk.sharpe_ratio` against the daily
+bill rate (the six whole-history portfolios, to 31 August 2026, where the
+factor cache ends) gives tangency 0.76, risk parity 0.61, inverse volatility
+0.59, equal weight 0.53, minimum CVaR 0.44 and minimum variance 0.43,
+against 1.01, 0.82, 0.77, 0.66, 0.78 and 0.77 at zero over the same days:
+44.1% and 44.7% lower for the two AGG-heavy portfolios, 19.0% for equal
+weight. The held periods overlap, so the five splits are five views of one
+history, and nothing here charges trading costs.
+
 ## Parts
 
 | Part | State |
@@ -808,7 +925,7 @@ is evidence that it will persist.
 | Scenarios: allocation mixes, rebalancing, stress periods | done |
 | Efficient frontier and mean-variance optimiser, held out of sample | done |
 | Fama-French factor attribution (Ken French data library), ratios against the bill rate | done |
-| Risk parity and CVaR optimisation | to come |
+| Risk parity and CVaR optimisation, compared out of sample | done |
 | Cost-aware backtest: transaction costs, spreads, rebalancing drag | to come |
 | Tableau extracts, dashboard spec and Plotly reproduction | to come |
 
