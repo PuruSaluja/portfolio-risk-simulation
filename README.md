@@ -240,7 +240,8 @@ paths do not depend on the linear-algebra library numpy was built with: numpy
 
 ```bash
 python -m portfolio_risk.montecarlo --weights equal --horizon 252 --paths 10000 --seed 0 \
-    --model normal --model t --model bootstrap --model bootstrap:21
+    --model normal --model t --model bootstrap --model bootstrap:1 --model bootstrap:21 \
+    --model bootstrap:63 --model bootstrap:252 --json results/montecarlo.json
 ```
 
 `--weights` also takes e.g. `SPY=0.6,AGG=0.4` (long only, adding up to 1);
