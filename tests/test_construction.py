@@ -1,18 +1,26 @@
 import itertools
+import json
 import math
+from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from portfolio_risk import construction
+from portfolio_risk import frontier as fr
 from portfolio_risk.construction import (
+    PORTFOLIOS,
     inverse_volatility,
+    main,
     minimum_cvar,
     risk_contributions,
     risk_parity,
 )
-from portfolio_risk.risk import expected_shortfall, value_at_risk
+from portfolio_risk.data import COLUMNS, load_cache, write_cache
+from portfolio_risk.returns import total_returns
+from portfolio_risk.risk import expected_shortfall, sharpe_ratio, value_at_risk
 
 
 def random_covariance(n, seed, correlation=None):
@@ -218,6 +226,124 @@ def test_returns_that_never_lose_have_a_negative_cvar() -> None:
     series = portfolio(returns, w)
     assert cvar < 0 and threshold < 0
     assert cvar == pytest.approx(expected_shortfall(series, 0.95), rel=1e-9)
+
+
+def prices() -> pd.DataFrame:
+    days = pd.bdate_range("2023-01-02", "2024-12-31")
+    rng = np.random.default_rng(0)
+    common = rng.normal(0.0, 0.006, len(days))
+    rows = []
+    for i, ticker in enumerate(["AAA", "BBB", "CCC"]):
+        moves = 0.0002 * (i + 1) + common * i + rng.normal(0.0, 0.004 * (1 + i), len(days))
+        close = 50.0 * np.cumprod(1 + moves)
+        for day, value in zip(days, close, strict=True):
+            rows.append((day.date(), ticker, float(value), 0.0, 0.0, 0.0, 1e6))
+    return pd.DataFrame(rows, columns=list(COLUMNS))
+
+
+def cache(tmp_path: Path) -> Path:
+    path = tmp_path / "prices.csv"
+    write_cache(prices(), path, start=date(2023, 1, 1), end=date(2024, 12, 31), source="t")
+    return path
+
+
+def test_the_command_compares_the_six_portfolios_in_and_out_of_sample(
+    tmp_path: Path, capsys
+) -> None:
+    out = tmp_path / "results" / "construction.json"
+    path = cache(tmp_path)
+    assert main(["--cache", str(path), "--json", str(out), "--split", "2023-12-29"]) == 0
+    printed = capsys.readouterr().out
+    assert "chosen from 2023-01-03 to 2023-12-29, held from 2024-01-01 to 2024-12-31" in printed
+    assert b"\r" not in out.read_bytes()
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert tuple(written["portfolios"]) == PORTFOLIOS
+    daily = total_returns(load_cache(path))
+    expected, covariance = fr.estimates(daily)
+    figures = {name: p["in_sample"] for name, p in written["portfolios"].items()}
+    weights = {name: pd.Series(p["weights"]) for name, p in written["portfolios"].items()}
+    np.testing.assert_allclose(weights["risk_parity"], risk_parity(covariance), rtol=1e-12)
+    np.testing.assert_allclose(
+        weights["max_sharpe"], fr.max_sharpe(expected, covariance), rtol=1e-9, atol=1e-12
+    )
+    np.testing.assert_allclose(list(figures["risk_parity"]["risk_contributions"].values()), 1 / 3)
+    # Each optimum is the best of the six at what it optimises.
+    for name, f in figures.items():
+        assert figures["minimum_variance"]["volatility"] <= f["volatility"] + 1e-12, name
+        assert figures["minimum_cvar"]["cvar"] <= f["cvar"] + 1e-12, name
+        assert (f["sharpe_ratio"] or 0) <= figures["max_sharpe"]["sharpe_ratio"] + 1e-9, name
+    # The held figures are those of the weights chosen before, rebalanced after the split.
+    split = written["splits"][0]
+    before = daily.loc[:"2023-12-29"]
+    after = daily.loc["2024-01-01":]
+    w = minimum_cvar(before, 0.95)[0]
+    np.testing.assert_allclose(pd.Series(split["portfolios"]["minimum_cvar"]["weights"]), w)
+    held = portfolio(after, w)
+    got = split["portfolios"]["minimum_cvar"]["held"]
+    assert got["cvar"] == pytest.approx(expected_shortfall(held, 0.95), rel=1e-12)
+    assert got["volatility"] == pytest.approx(held.std() * math.sqrt(252), rel=1e-12)
+    years = (after.index[-1] - before.index[-1]).days / 365.25
+    assert got["compound_return"] == pytest.approx((1 + held).prod() ** (1 / years) - 1, rel=1e-9)
+    in_sample = split["portfolios"]["minimum_cvar"]["in_sample"]
+    assert in_sample["cvar"] == pytest.approx(minimum_cvar(before, 0.95)[1], rel=1e-9)
+
+
+def test_the_cap_level_and_rate_reach_the_portfolios(tmp_path: Path) -> None:
+    out = tmp_path / "c.json"
+    path = cache(tmp_path)
+    daily = total_returns(load_cache(path))
+    expected, covariance = fr.estimates(daily)
+    argv = ["--cache", str(path), "--json", str(out), "--split", "none"]
+    assert main(argv + ["--max-weight", "0.45"]) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["splits"] == []
+    for name in ("minimum_variance", "max_sharpe", "minimum_cvar"):
+        assert max(written["portfolios"][name]["weights"].values()) <= 0.45 + 1e-12
+    np.testing.assert_allclose(
+        pd.Series(written["portfolios"]["minimum_variance"]["weights"]),
+        fr.minimum_variance(covariance, 0.45),
+        atol=1e-12,
+    )
+    assert main(argv + ["--level", "0.99", "--risk-free", "-0.1"]) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert (written["max_weight"], written["level"], written["risk_free"]) == (1.0, 0.99, -0.1)
+    w = pd.Series(written["portfolios"]["minimum_cvar"]["weights"])
+    assert not np.allclose(w, minimum_cvar(daily, 0.95)[0], atol=1e-3)
+    np.testing.assert_allclose(w, minimum_cvar(daily, 0.99)[0], atol=1e-12)
+    tangency = fr.max_sharpe(expected, covariance, -0.1)
+    assert not np.allclose(tangency, fr.max_sharpe(expected, covariance), atol=1e-3)
+    np.testing.assert_allclose(
+        pd.Series(written["portfolios"]["max_sharpe"]["weights"]), tangency, atol=1e-12
+    )
+    equal = written["portfolios"]["equal"]["in_sample"]
+    history = portfolio(daily, pd.Series(1 / 3, index=daily.columns))
+    assert equal["cvar"] == pytest.approx(expected_shortfall(history, 0.99), rel=1e-12)
+    assert equal["sharpe_ratio"] == pytest.approx(sharpe_ratio(history, 252, -0.1), rel=1e-12)
+    np.testing.assert_allclose(
+        pd.Series(written["portfolios"]["inverse_volatility"]["weights"]),
+        inverse_volatility(covariance),
+        rtol=1e-14,
+    )
+
+
+def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
+    assert main(["--cache", str(tmp_path / "prices.csv")]) == 1
+    assert "manifest.json is missing" in capsys.readouterr().err
+    path = cache(tmp_path)
+    for argv, message in [
+        ([], "on 2009-12-31 leaves returns on 0 days before it"),
+        (["--split", "2023-12-29", "--split", "2023-12-29"], "given twice"),
+        (["--split", "2024-12-27"], "and 2 after; each side needs more than 3"),
+        (["--split", "2024-12-26"], "and 3 after; each side needs more than 3"),
+        (["--split", "2023-13-01"], "a split is a date"),
+        (["--split", "none", "--max-weight", "0.3"], "cannot add up to 1"),
+        (["--split", "none", "--level", "1"], "level"),
+        (["--json", str(tmp_path), "--split", "none"], ""),  # a folder
+    ]:
+        assert main(["--cache", str(path), *argv]) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("error: ") and message in captured.err
 
 
 def test_risk_parity_converges_where_the_last_step_is_below_rounding() -> None:

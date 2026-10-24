@@ -27,14 +27,33 @@ Every portfolio here is long only and fully invested, like the frontier's.
 
 Neither risk parity nor minimum CVaR uses expected returns, which the frontier's
 out-of-sample results showed to be the estimate least worth trusting.
+
+``python -m portfolio_risk.construction`` compares six portfolios from the cache's
+daily total returns: equal weights, inverse volatility, risk parity, the minimum-
+variance and tangency portfolios of the frontier, and minimum CVaR. Each is chosen
+from the whole history, and from the returns up to each of a few split dates and then
+held after it, rebalanced every close: what it was in the data it was chosen from, and
+what it did after.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import math
+import sys
+from collections.abc import Sequence
+from datetime import date
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from portfolio_risk import frontier, risk
+from portfolio_risk import returns as ret
+from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
+from portfolio_risk.montecarlo import historical_portfolio_returns
 
 # Newton's method stops when every contribution is within this of its budget; it
 # gets there in a handful of steps, the function being smooth and strictly convex.
@@ -186,3 +205,230 @@ def minimum_cvar(
         float(solution.fun),
         float(solution.x[n]),
     )
+
+
+PORTFOLIOS = (
+    "equal",
+    "inverse_volatility",
+    "risk_parity",
+    "minimum_variance",
+    "max_sharpe",
+    "minimum_cvar",
+)
+
+
+def choose(
+    daily: pd.DataFrame, risk_free: float = 0.0, max_weight: float = 1.0, level: float = 0.95
+) -> dict[str, pd.Series]:
+    """The six portfolios from ``daily`` returns, in the order of ``PORTFOLIOS``.
+
+    The covariance is the sample one, as the frontier's default; the cap applies to the
+    three optimised portfolios (minimum variance, tangency, minimum CVaR), the others
+    being what their rules give.
+    """
+    expected, covariance = frontier.estimates(daily)
+    n = daily.shape[1]
+    return {
+        "equal": pd.Series(1.0 / n, index=daily.columns, name="weight"),
+        "inverse_volatility": inverse_volatility(covariance),
+        "risk_parity": risk_parity(covariance),
+        "minimum_variance": frontier.minimum_variance(covariance, max_weight),
+        "max_sharpe": frontier.max_sharpe(expected, covariance, risk_free, max_weight),
+        "minimum_cvar": minimum_cvar(daily, level, max_weight)[0],
+    }
+
+
+def describe(
+    daily: pd.DataFrame,
+    w: pd.Series,
+    first_close: pd.Timestamp,
+    risk_free: float = 0.0,
+    level: float = 0.95,
+) -> dict[str, Any]:
+    """A portfolio rebalanced every close over ``daily``: its returns, risk and tail.
+
+    Contributions are each fund's share of the variance of the portfolio's daily
+    returns there; CVaR and value at risk are of one day's return, historical.
+    """
+    history = historical_portfolio_returns(daily, w.to_dict())
+    per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *daily.index]))
+    days = ret.TRADING_DAYS_PER_YEAR
+    _, covariance = frontier.estimates(daily)
+    return {
+        "mean": float(ret.annualised_mean(history, days)),
+        "volatility": float(ret.annualised_volatility(history, days)),
+        "sharpe_ratio": risk.or_none(risk.sharpe_ratio, history, days, risk_free),
+        "compound_return": float(ret.annualised_return(history, per_year)),
+        "max_drawdown": risk.max_drawdown(history).depth,
+        "value_at_risk": risk.value_at_risk(history, level),
+        "cvar": risk.expected_shortfall(history, level),
+        "risk_contributions": {
+            str(t): float(v) for t, v in risk_contributions(w, covariance).items()
+        },
+    }
+
+
+def _sides(daily: pd.DataFrame, split: date) -> tuple[pd.DataFrame, pd.DataFrame]:
+    before = daily.loc[daily.index <= pd.Timestamp(split)]
+    after = daily.loc[daily.index > pd.Timestamp(split)]
+    funds = daily.shape[1]
+    # A covariance matrix of n funds needs more than n days to be positive definite.
+    if min(len(before), len(after)) <= funds:
+        raise ValueError(
+            f"a split on {split.isoformat()} leaves returns on {len(before)} days before it "
+            f"and {len(after)} after; each side needs more than {funds}, one per fund"
+        )
+    return before, after
+
+
+def _held_out(
+    daily: pd.DataFrame,
+    split: date,
+    first_close: pd.Timestamp,
+    risk_free: float,
+    max_weight: float,
+    level: float,
+) -> dict[str, Any]:
+    """The six portfolios chosen from the returns up to ``split`` and held after it."""
+    before, after = _sides(daily, split)
+    chosen = choose(before, risk_free, max_weight, level)
+    return {
+        "date": split.isoformat(),
+        "estimated_on": frontier._span(before),
+        "held_on": frontier._span(after),
+        "portfolios": {
+            name: {
+                "weights": {str(t): float(v) for t, v in w.items()},
+                "in_sample": describe(before, w, first_close, risk_free, level),
+                "held": describe(after, w, before.index[-1], risk_free, level),
+            }
+            for name, w in chosen.items()
+        },
+    }
+
+
+def run(
+    prices: pd.DataFrame,
+    risk_free: float = 0.0,
+    max_weight: float = 1.0,
+    level: float = 0.95,
+    splits: Sequence[date] = frontier.DEFAULT_SPLITS,
+) -> dict[str, Any]:
+    """The six portfolios from the whole history, and chosen up to each split and held after.
+
+    Compound returns in sample run from the first close; held after a split, from the
+    split's last close.
+    """
+    if len(set(splits)) != len(splits):
+        raise ValueError("a split date is given twice")
+    daily = ret.total_returns(prices)
+    first_close = wide(prices, "close").dropna().index[0]
+    held_out = [
+        _held_out(daily, split, first_close, risk_free, max_weight, level) for split in splits
+    ]
+    chosen = choose(daily, risk_free, max_weight, level)
+    return {
+        **frontier._span(daily),
+        "risk_free": risk_free,
+        "max_weight": max_weight,
+        "level": level,
+        "portfolios": {
+            name: {
+                "weights": {str(t): float(v) for t, v in w.items()},
+                "in_sample": describe(daily, w, first_close, risk_free, level),
+            }
+            for name, w in chosen.items()
+        },
+        "splits": held_out,
+    }
+
+
+def _ratio(value: float | None) -> str:
+    return "-" if value is None else f"{value:.3f}"
+
+
+def _rows(portfolios: dict[str, Any], key: str) -> None:
+    print(
+        f"{'':18} {'mean':>7} {'vol':>7} {'Sharpe':>7} {'compound':>8} {'max DD':>8} "
+        f"{'VaR':>6} {'CVaR':>6} {'top risk':>8}  weights"
+    )
+    for name, p in portfolios.items():
+        d = p[key]
+        top = max(d["risk_contributions"].values())
+        print(
+            f"{name:18} {d['mean']:>7.2%} {d['volatility']:>7.2%} {_ratio(d['sharpe_ratio']):>7} "
+            f"{d['compound_return']:>8.2%} {d['max_drawdown']:>8.2%} {d['value_at_risk']:>6.2%} "
+            f"{d['cvar']:>6.2%} {top:>8.1%}  {frontier._weights_text(p['weights'])}"
+        )
+
+
+def _print(result: dict[str, Any]) -> None:
+    cap = "" if result["max_weight"] == 1.0 else f", at most {result['max_weight']:.0%} a fund"
+    print(
+        f"{result['daily_returns']} daily returns, {result['first_return']} to "
+        f"{result['last_return']}; risk-free rate {result['risk_free']:.2%} a year; one day's "
+        f"value at risk and CVaR at {result['level']:.0%}; long only{cap}"
+    )
+    print("top risk: the largest share of the portfolio's variance any one fund contributes\n")
+    _rows(result["portfolios"], "in_sample")
+    for split in result["splits"]:
+        first, then = split["estimated_on"], split["held_on"]
+        print(
+            f"\nchosen from {first['first_return']} to {first['last_return']}, held from "
+            f"{then['first_return']} to {then['last_return']}"
+        )
+        _rows(split["portfolios"], "held")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m portfolio_risk.construction", description=__doc__.splitlines()[0]
+    )
+    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument(
+        "--max-weight",
+        type=float,
+        default=1.0,
+        help="most any fund may hold in the optimised portfolios (default 1)",
+    )
+    parser.add_argument(
+        "--risk-free",
+        type=float,
+        default=0.0,
+        help="compound annual risk-free rate, for the tangency portfolio and the Sharpe "
+        "ratios (default 0)",
+    )
+    parser.add_argument(
+        "--level", type=float, default=0.95, help="CVaR confidence level (default 0.95)"
+    )
+    parser.add_argument(
+        "--split",
+        action="append",
+        help="choose the portfolios from the returns up to this date and hold them after "
+        "it; may be given more than once (default: "
+        f"{', '.join(d.isoformat() for d in frontier.DEFAULT_SPLITS)}; none for no split)",
+    )
+    parser.add_argument("--json", type=Path, help="also write the figures to this file")
+    args = parser.parse_args(argv)
+    try:
+        splits = frontier._splits(args.split)
+        prices = load_cache(args.cache)
+        result = {
+            "cache_sha256": read_manifest(args.cache)["sha256"],
+            **run(prices, args.risk_free, args.max_weight, args.level, splits),
+        }
+        # Written before anything is printed, so a failure leaves no half-finished run.
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.json, "w", encoding="utf-8", newline="\n") as out:
+                json.dump(result, out, indent=2, allow_nan=False)
+                out.write("\n")
+    except (DataError, ValueError, OSError, ArithmeticError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    _print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
