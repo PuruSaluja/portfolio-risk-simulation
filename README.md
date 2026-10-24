@@ -4,8 +4,9 @@ Monte Carlo simulation and risk analysis of multi-asset portfolios, on real
 daily market data.
 
 > **Status:** in progress. The data ingestion, the returns and covariance
-> engine, the Monte Carlo simulation, the risk measures, the scenario engine
-> and the mean-variance optimiser are done; the parts below are built in
+> engine, the Monte Carlo simulation, the risk measures, the scenario engine,
+> the mean-variance optimiser and the factor attribution are done; the parts
+> below are built in
 > order, and every figure this README gives comes from a run of the committed
 > code.
 
@@ -81,6 +82,43 @@ every fetch. Total returns are computed from the close and dividends
 instead (see below), and without it the same data gives the same file:
 fetches on 2026-10-20, hours apart and with yfinance 0.2.58 to 1.7.0, gave the
 same SHA-256 as the committed manifest.
+
+### Factors and the risk-free rate
+
+The Fama-French factors and the one-month Treasury bill rate are also **real
+data**, from [Kenneth French's data
+library](https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html):
+the daily three-factor file (`Mkt-RF`, `SMB`, `HML`, `RF`), the daily
+five-factor file (2x3 sorts, adding `RMW` and `CMA`) and the monthly
+three-factor file, for its bill rate. Like the prices, the figures are cached
+locally and not committed; the manifest
+[`data/factors.manifest.json`](data/factors.manifest.json) is, with the three
+files' URLs and the CRSP database each was built from.
+
+```bash
+python -m portfolio_risk.french fetch     # download into data/factors.csv
+python -m portfolio_risk.french verify    # check the cache against its manifest
+```
+
+The committed manifest is from a fetch on 2026-10-24 of files built from the
+August 2026 CRSP database: 5,449 trading days, 3 January 2005 to 31 August
+2026. The library publishes whole months a month or two behind, so the
+factors end a month before the prices; every result that uses them is over
+the days both cover. The fetch checks that the two daily files hold the same
+days and the same `Mkt-RF`, `HML` and `RF` (they do on every day of the
+window), and that the monthly file has a rate for every month. The library
+revises its history when CRSP does, so a later fetch can differ from the
+manifest, and the check then says so.
+
+**The daily bill rate is rebuilt from the monthly one.** The daily files give
+`RF` to two decimals of a percent: 0.00, 0.01 or 0.02 on every day of the
+window. Compounded, those rounded figures give 5.13% for 2025 where the
+monthly file's rates compound to 4.25%, and 0.00% for 2010 against 0.10%. The
+library builds its daily rate as the simple daily rate that compounds to the
+month's rate over the month's trading days, then rounds it;
+`french.daily_risk_free` does the same without the rounding. Rounded, it gives
+the published figure on 5,407 of the 5,449 days. Over the window it compounds
+to 1.74% a year.
 
 ## Returns and risk of each fund
 
@@ -319,13 +357,16 @@ pandas recalculation on the real data agrees to 2e-17.
 
 ```bash
 python -m portfolio_risk.risk --weights equal --risk-free 0 --json results/risk-metrics.json
+python -m portfolio_risk.risk --weights equal --risk-free bills --json results/risk-metrics-bills.json
 ```
 
-**The Sharpe and Sortino ratios here are against a risk-free rate of zero**,
-so they are of total return, not excess over Treasury bills: `--risk-free`
-takes a constant annual rate, and a measured daily risk-free series comes with
-the factor-attribution part (the Ken French data library publishes one).
-Any positive rate would lower every ratio in the table.
+`--risk-free` takes a constant annual rate, or `bills` for the daily
+one-month Treasury bill rate from the factor cache (see [Factors and the
+risk-free rate](#factors-and-the-risk-free-rate)), subtracted day by day; the
+monthly ratio is then against the bill compounded over the same months, and
+the measures cover the days the factor cache covers. The first table below is
+against a zero rate over the full price history, so its ratios are of total
+return; the bill-rate ratios follow it.
 
 ### Results
 
@@ -380,6 +421,35 @@ What they show:
   figure (as the returns section measures), while the monthly mean times 12 is
   0.84 to 0.99 of the daily mean times 252, so a ratio scaled from daily data
   understates them.
+
+**Against the Treasury bill.** Over the days the factor cache covers, 4
+January 2005 to 31 August 2026 (5,448 days), with the one-month bill at 1.74%
+a year compounded
+([`results/risk-metrics-bills.json`](results/risk-metrics-bills.json)):
+
+| Series | Compound return | Sharpe, daily | Sharpe, monthly | Sortino | Sharpe against zero (above) | Sortino against zero |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| SPY | 10.93% | 0.55 | 0.66 | 0.78 | 0.64 | 0.91 |
+| IWM | 8.72% | 0.40 | 0.44 | 0.56 | 0.46 | 0.65 |
+| EFA | 6.32% | 0.32 | 0.35 | 0.44 | 0.39 | 0.55 |
+| EEM | 7.32% | 0.33 | 0.36 | 0.48 | 0.39 | 0.57 |
+| AGG | 3.00% | 0.26 | 0.30 | 0.36 | 0.57 | 0.79 |
+| TLT | 2.96% | 0.15 | 0.15 | 0.22 | 0.26 | 0.37 |
+| GLD | 10.95% | 0.57 | 0.59 | 0.80 | 0.64 | 0.91 |
+| VNQ | 6.97% | 0.32 | 0.34 | 0.46 | 0.37 | 0.53 |
+| Equal weight | 8.45% | 0.53 | 0.62 | 0.76 | 0.64 | 0.92 |
+
+The window ends a month earlier than the table above's, which moves the
+compound returns a little (SPY 10.93% against 10.87%); the drawdowns are the
+same. Against the bill every daily Sharpe ratio is lower than against zero, by
+11.5% (GLD) to 19.0% (EFA) for the equity funds and gold, by 17.1% for the
+equal-weight portfolio, and by 39.4% for TLT and 53.8% for AGG: a bond fund
+earning 3% a year earned little more than the bill, so most of its zero-rate
+ratio was the bill's. AGG's daily Sharpe ratio, 0.57 against zero (only SPY,
+gold and the portfolio were higher, at 0.64), is 0.26 against the bill, below
+every equity fund's. The bill compounds to 4.25% to 5.25% a year in 2023 to
+2025 and 2006 to 2007, and to at most 0.10% in each year from 2009 to 2015
+and in 2021, so the gap between the two tables depends on the window.
 
 ## Scenarios: allocation mixes, rebalancing and stress periods
 
@@ -607,8 +677,125 @@ What they show:
 The held periods overlap (every one includes 2022 to 2026), so the five splits
 are five views of one history, not five independent trials. The ratios take a
 zero risk-free rate, which flatters every portfolio and the least volatile
-most; the factor attribution brings a measured rate. Nothing here charges
-trading costs.
+most (against the measured bill rate, AGG's Sharpe ratio falls by more than
+half; see the risk measures). Nothing here charges trading costs.
+
+## Factor attribution
+
+[`factors.py`](src/portfolio_risk/factors.py) regresses each fund's daily
+return in excess of the bill rate on the day's Fama-French factors, by
+ordinary least squares:
+
+```
+r - rf = alpha + b1 (Mkt-RF) + b2 SMB + b3 HML [+ b4 RMW + b5 CMA] + e
+```
+
+the three-factor model (market, size, value; Fama and French 1993) and the
+five-factor one (adding profitability and investment; 2015). Daily returns are
+autocorrelated and their variance changes, so beside the OLS standard errors
+it gives Newey-West ones (Bartlett weights, 9 lags for 5,448 days by Newey and
+West's 1994 rule, no small-sample correction). The t-statistics below are
+Newey-West's. Because OLS with an intercept passes through the means, the
+mean excess return splits exactly into alpha plus each beta times its
+factor's mean, all times 252.
+
+```bash
+python -m portfolio_risk.factors --json results/factors.json
+```
+
+The tests check the fit against textbook formulas and the Newey-West errors
+against the formula written out as loops over the observations, at 0 to 9
+lags. On the real data, statsmodels 0.14.6 (run outside the project) gives
+the same coefficients to 1e-13, OLS errors to 3e-15 and Newey-West errors to
+2.6e-13 (relative), for every fund and both models.
+
+### Results
+
+4 January 2005 to 31 August 2026 (5,448 days)
+([`results/factors.json`](results/factors.json)). Alpha is a year's (daily
+times 252); Newey-West t-statistics in brackets.
+
+| Three factors | Alpha | Mkt-RF | SMB | HML | R² |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| SPY | -0.17% (-0.7) | 0.99 (111.0) | -0.13 (-13.5) | -0.00 (-0.2) | 0.986 |
+| IWM | -1.16% (-2.0) | 1.04 (143.9) | 0.86 (61.8) | 0.24 (28.1) | 0.976 |
+| EFA | -3.60% (-1.8) | 0.95 (37.2) | -0.08 (-2.5) | 0.13 (5.9) | 0.775 |
+| EEM | -3.46% (-1.1) | 1.18 (23.6) | -0.07 (-1.4) | 0.06 (1.7) | 0.670 |
+| AGG | 1.34% (1.3) | 0.00 (0.2) | -0.00 (-0.0) | -0.05 (-4.4) | 0.016 |
+| TLT | 4.59% (1.6) | -0.22 (-11.1) | 0.06 (1.6) | -0.20 (-8.1) | 0.124 |
+| GLD | 9.61% (2.5) | 0.07 (2.4) | 0.04 (1.1) | -0.12 (-4.1) | 0.012 |
+| VNQ | -1.95% (-0.6) | 1.04 (25.5) | 0.18 (3.5) | 0.51 (10.2) | 0.611 |
+| Equal weight | 0.65% (0.5) | 0.63 (41.8) | 0.11 (6.1) | 0.07 (5.9) | 0.823 |
+
+| Five factors | Alpha | Mkt-RF | SMB | HML | RMW | CMA | R² |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| SPY | -0.39% (-1.6) | 1.00 (103.6) | -0.12 (-14.0) | 0.01 (1.0) | 0.06 (6.1) | 0.04 (3.0) | 0.986 |
+| IWM | -1.01% (-2.0) | 1.02 (155.5) | 0.86 (61.1) | 0.07 (8.4) | -0.08 (-6.7) | -0.01 (-0.7) | 0.979 |
+| EFA | -3.66% (-1.9) | 0.96 (33.0) | -0.07 (-2.4) | 0.12 (4.4) | -0.01 (-0.4) | 0.12 (2.8) | 0.776 |
+| EEM | -3.11% (-1.0) | 1.17 (20.8) | -0.08 (-1.6) | 0.08 (1.6) | -0.09 (-1.4) | 0.01 (0.1) | 0.670 |
+| AGG | 1.40% (1.4) | -0.00 (-0.1) | -0.00 (-0.0) | -0.05 (-3.9) | -0.01 (-0.7) | -0.01 (-0.5) | 0.017 |
+| TLT | 4.60% (1.6) | -0.22 (-10.3) | 0.06 (1.6) | -0.21 (-7.5) | -0.01 (-0.2) | -0.00 (-0.1) | 0.124 |
+| GLD | 9.72% (2.6) | 0.07 (2.6) | 0.04 (0.9) | -0.15 (-4.4) | -0.06 (-1.2) | 0.12 (2.2) | 0.014 |
+| VNQ | -2.17% (-0.6) | 1.04 (27.2) | 0.23 (4.0) | 0.47 (7.6) | 0.07 (1.3) | -0.01 (-0.2) | 0.613 |
+| Equal weight | 0.67% (0.5) | 0.63 (38.2) | 0.11 (6.7) | 0.04 (2.8) | -0.02 (-1.0) | 0.03 (1.3) | 0.824 |
+
+Where each fund's mean excess return came from, three factors (a year; the
+parts add up to the mean):
+
+| Series | Mean excess return | Alpha | Market | Size | Value |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| SPY | 10.46% | -0.17% | 10.57% | 0.06% | 0.00% |
+| IWM | 9.55% | -1.16% | 11.10% | -0.37% | -0.03% |
+| EFA | 6.62% | -3.60% | 10.20% | 0.03% | -0.01% |
+| EEM | 9.16% | -3.46% | 12.60% | 0.03% | -0.01% |
+| AGG | 1.37% | 1.34% | 0.02% | 0.00% | 0.01% |
+| TLT | 2.25% | 4.59% | -2.33% | -0.02% | 0.02% |
+| GLD | 10.36% | 9.61% | 0.75% | -0.02% | 0.01% |
+| VNQ | 9.08% | -1.95% | 11.16% | -0.08% | -0.05% |
+| Equal weight | 7.36% | 0.65% | 6.76% | -0.05% | -0.01% |
+
+What they show:
+
+- **The equity funds are the market, and the market paid.** The market
+  factor's excess return averaged 10.71% a year over the window, so a market
+  beta near 1 accounts for 10.2% to 12.6% a year of SPY's, IWM's, EFA's,
+  EEM's and VNQ's mean excess returns. Size and value paid almost nothing
+  (`SMB` -0.43% and `HML` -0.11% a year), so IWM's large size loading (0.86)
+  and VNQ's value loading (0.51) explain how they moved, not what they
+  earned.
+- **SPY is what an index fund should be:** a market beta of 0.99, R² 0.986,
+  and an alpha of -0.17% a year that is not distinguishable from zero (t
+  -0.7); the fund charges about 0.09% a year. Its slight negative size loading
+  (-0.13) is the S&P 500 holding only large companies, while `Mkt-RF` is
+  every US stock.
+- **Small caps lagged their factor exposures.** IWM's alpha is -1.16% a year
+  with three factors and -1.01% with five (t -2.0 both): the Russell 2000
+  earned less than its market, size and value loadings imply.
+- **For the funds outside US equities the factors explain little.** AGG's R²
+  is 0.016 and gold's 0.012, so their alphas (1.34% and 9.61% a year) are
+  just their mean returns over the bill, unexplained by US stock factors, not
+  skill; the factors have no bond or commodity return in them. TLT's market
+  beta of -0.22 is the bond-stock hedge the correlations showed.
+- **EFA and EEM** have market betas of 0.95 and 1.18 but R² of 0.775 and
+  0.670: US factors miss their currencies and markets. Their alphas of -3.6%
+  and -3.5% a year (t -1.8 and -1.1) are what non-US stocks earned below US
+  ones with the same beta over these two decades.
+- **Five factors change little here.** R² rises by at most 0.0034 (IWM), and
+  profitability and investment, `RMW` and `CMA`, add at most 0.24 points a
+  year to any fund's mean (EEM's `RMW` part, -0.24%). SPY's alpha moves from
+  -0.17% to -0.39% because it loads on profitability (0.06), which paid 2.67%
+  a year.
+- **The equal-weight portfolio's alpha is 0.65% a year (t 0.5)**, the
+  average of the eight funds' alphas, as a portfolio rebalanced daily to fixed
+  weights must have: gold's, TLT's and AGG's, less the equity funds'. A market
+  beta of 0.63 accounts for 6.76% of its 7.36% mean excess return.
+
+The Newey-West t-statistics of the alphas are close to, or larger than, the
+OLS ones (SPY -0.69 against -0.34): the residuals are negatively
+autocorrelated (SPY's lag-one correlation is -0.35), which narrows rather than
+widens the error of a mean. Daily regressions over one 21-year window describe
+these funds over that window; with no alpha's t-statistic above 2.6, none here
+is evidence that it will persist.
 
 ## Parts
 
@@ -620,8 +807,8 @@ trading costs.
 | Risk metrics: Sharpe, Sortino, drawdown, VaR, CVaR, downside deviation | done |
 | Scenarios: allocation mixes, rebalancing, stress periods | done |
 | Efficient frontier and mean-variance optimiser, held out of sample | done |
+| Fama-French factor attribution (Ken French data library), ratios against the bill rate | done |
 | Risk parity and CVaR optimisation | to come |
-| Fama-French factor attribution (Ken French data library) | to come |
 | Cost-aware backtest: transaction costs, spreads, rebalancing drag | to come |
 | Tableau extracts, dashboard spec and Plotly reproduction | to come |
 
@@ -634,8 +821,10 @@ pytest
 ruff check . && ruff format --check .
 ```
 
-The tests never reach Yahoo: they stand in for the download.
+The tests never reach Yahoo or the data library: they stand in for the
+downloads.
 
 ## License
 
-MIT; see [LICENSE](LICENSE). The license covers the code, not Yahoo's data.
+MIT; see [LICENSE](LICENSE). The license covers the code, not Yahoo's data
+or the factor data, which is Eugene Fama and Kenneth French's.
