@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from portfolio_risk import french
 from portfolio_risk.data import COLUMNS, write_cache
 from portfolio_risk.risk import (
     downside_deviation,
@@ -362,3 +363,127 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         assert captured.out == ""
         assert captured.err.startswith("error: ") and message in captured.err
         assert "Traceback" not in captured.err
+
+
+def test_a_series_of_rates_is_subtracted_day_by_day() -> None:
+    r = random_returns()
+    rate = pd.Series(np.linspace(0.0, 0.0004, len(r)), index=r.index)
+    excess = r - rate
+    assert sharpe_ratio(r, 252, rate) == pytest.approx(
+        excess.mean() / excess.std() * math.sqrt(252), rel=1e-12
+    )
+    shortfall = np.minimum(excess, 0.0)
+    downside = math.sqrt((shortfall**2).mean()) * math.sqrt(252)
+    assert downside_deviation(r, 252, rate) == pytest.approx(downside, rel=1e-12)
+    assert sortino_ratio(r, 252, rate) == pytest.approx(excess.mean() * 252 / downside, rel=1e-12)
+
+
+def test_a_constant_series_gives_what_its_annual_rate_gives() -> None:
+    r = random_returns()
+    daily = per_period_rate(0.04, 252)
+    rate = pd.Series(daily, index=r.index)
+    assert sharpe_ratio(r, 252, rate) == pytest.approx(sharpe_ratio(r, 252, 0.04), rel=1e-12)
+    assert sortino_ratio(r, 252, rate) == pytest.approx(sortino_ratio(r, 252, 0.04), rel=1e-12)
+
+
+def test_a_steady_return_over_a_varying_rate_has_a_sharpe_ratio() -> None:
+    r = series([0.001] * 10)
+    rate = pd.Series(np.linspace(0.0, 0.0009, 10), index=r.index)
+    assert sharpe_ratio(r, 252, rate) > 0
+    with pytest.raises(ValueError, match="never vary"):
+        sharpe_ratio(r, 252, pd.Series(0.0002, index=r.index))
+
+
+def test_a_series_of_rates_off_the_returns_dates_or_values_is_refused() -> None:
+    r = random_returns()
+    for rate, message in [
+        (pd.Series(0.0, index=r.index[1:]), "on the returns' dates"),
+        (pd.Series(0.0, index=r.index).where(r.index != r.index[3]), "finite"),
+        (pd.Series(-1.0, index=r.index), "above -100%"),
+    ]:
+        for measure in (sharpe_ratio, downside_deviation, sortino_ratio):
+            with pytest.raises(ValueError, match=message):
+                measure(r, 252, rate)
+        with pytest.raises(ValueError, match=message):
+            measures(r, 252, rate)
+
+
+def factor_cache(tmp_path: Path, end="2024-11-29") -> Path:
+    """A factor cache over the price days up to ``end``, the bill rate rising each month."""
+    days = pd.bdate_range("2023-01-02", end)
+    table = pd.DataFrame({"date": days.date})
+    for column in ("mkt_rf", "smb", "hml", "rf", "smb5", "rmw", "cma"):
+        table[column] = 0.01
+    table["rf_month"] = np.round(0.2 + 0.01 * (days.month + 12 * (days.year - 2023)), 2)
+    path = tmp_path / "factors.csv"
+    french.write_cache(table, path, start=date(2023, 1, 1), end=date(2024, 12, 31), vintages={})
+    return path
+
+
+def test_the_command_measures_against_the_bill_over_the_days_it_covers(
+    tmp_path: Path, capsys
+) -> None:
+    path = cache(tmp_path)
+    factors = factor_cache(tmp_path)
+    out = tmp_path / "bills.json"
+    argv = ["--cache", str(path), "--factors", str(factors), "--json", str(out)]
+    assert main(argv + ["--risk-free", "bills"]) == 0
+    printed = capsys.readouterr().out
+    assert "499 daily returns, 2023-01-03 to 2024-11-29; risk-free rate one-month " in printed
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["risk_free"] == "one-month Treasury bill"
+    assert written["factors_sha256"] == french.read_manifest(factors)["sha256"]
+    rate = french.daily_risk_free(french.load_factors(factors)).loc["2023-01-03":]
+    p = prices().pivot(index="date", columns="ticker", values="close")
+    daily = (p / p.shift(1) - 1).iloc[1:]
+    daily.index = pd.DatetimeIndex(daily.index)
+    aaa = daily["AAA"].loc[rate.index]
+    figures = written["series"]["AAA"]
+    assert figures["sharpe_ratio"] == pytest.approx(sharpe_ratio(aaa, 252, rate), rel=1e-12)
+    assert figures["sortino_ratio"] == pytest.approx(sortino_ratio(aaa, 252, rate), rel=1e-12)
+    # Monthly: each month's return against the bill compounded over the same days.
+    month = aaa.index.to_period("M")
+    monthly = (1 + aaa).groupby(month).prod() - 1
+    bill = (1 + rate).groupby(month).prod() - 1
+    excess = monthly - bill
+    assert figures["sharpe_ratio_monthly"] == pytest.approx(
+        excess.mean() / excess.std() * math.sqrt(12), rel=1e-12
+    )
+    years = (rate.index[-1] - pd.Timestamp("2023-01-02")).days / 365.25
+    assert written["risk_free_compound"] == pytest.approx(
+        (1 + rate).prod() ** (1 / years) - 1, rel=1e-9
+    )
+    assert figures["max_drawdown"]["depth"] == pytest.approx(max_drawdown(aaa).depth)
+
+
+def test_a_constant_rate_leaves_the_output_as_it_was(tmp_path: Path) -> None:
+    out = tmp_path / "zero.json"
+    assert main(["--cache", str(cache(tmp_path)), "--json", str(out)]) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["risk_free"] == 0.0
+    assert "risk_free_compound" not in written and "factors_sha256" not in written
+
+
+def test_bills_without_a_factor_cache_are_refused_plainly(tmp_path: Path, capsys) -> None:
+    argv = ["--cache", str(cache(tmp_path)), "--factors", str(tmp_path / "none.csv")]
+    assert main(argv + ["--risk-free", "bills"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "" and "none.manifest.json is missing" in captured.err
+
+
+def test_rates_on_other_dates_of_the_same_number_are_refused() -> None:
+    r = random_returns(n=50)
+    shifted = pd.Series(0.0, index=r.index + pd.offsets.BDay(1))
+    with pytest.raises(ValueError, match="on the returns' dates"):
+        sharpe_ratio(r, 252, shifted)
+
+
+def test_bills_missing_a_day_the_prices_have_are_refused(tmp_path: Path, capsys) -> None:
+    factors = factor_cache(tmp_path)
+    table = pd.read_csv(factors, dtype={"date": str})
+    table = table[table["date"] != "2023-06-14"]
+    table["date"] = [date.fromisoformat(d) for d in table["date"]]
+    french.write_cache(table, factors, start=date(2023, 1, 1), end=date(2024, 12, 31), vintages={})
+    argv = ["--cache", str(cache(tmp_path)), "--factors", str(factors), "--risk-free", "bills"]
+    assert main(argv) == 1
+    assert "2023-06-14 is in the returns only" in capsys.readouterr().err

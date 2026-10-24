@@ -2,6 +2,9 @@
 
 Rates given per year (``risk_free``, ``target``) are compound annual rates, turned into
 the rate per period that compounds to them: ``(1 + annual) ** (1 / periods_per_year) - 1``.
+Either may instead be a Series of rates per period on the returns' dates, such as the
+daily Treasury bill rate ``french.daily_risk_free`` gives, which is subtracted day by
+day.
 
 ``sharpe_ratio``
     The mean return in excess of the risk-free rate over the standard deviation of
@@ -31,8 +34,10 @@ the rate per period that compounds to them: ``(1 + annual) ** (1 / periods_per_y
 
 ``python -m portfolio_risk.risk`` gives every measure for each fund in the price cache
 and for a portfolio of them rebalanced daily, from daily total returns, with the Sharpe
-ratio of calendar-month returns beside the daily one. ``--json`` writes the figures to
-a file.
+ratio of calendar-month returns beside the daily one. ``--risk-free bills`` measures
+the ratios against the one-month Treasury bill from the factor cache, over the days it
+covers (the monthly ratio against the bill's return compounded over the same months);
+``--json`` writes the figures to a file.
 """
 
 from __future__ import annotations
@@ -50,12 +55,17 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
+from portfolio_risk import french
 from portfolio_risk import returns as ret
 from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
+from portfolio_risk.factors import align
 from portfolio_risk.montecarlo import check_weights, historical_portfolio_returns, parse_weights
 
 Method = Literal["historical", "normal"]
 LEVELS = (0.95, 0.99)
+# A compound annual rate, or rates per period on the returns' dates.
+Rate = float | pd.Series
+BILLS = "bills"
 
 
 def _values(returns: pd.Series, minimum: int = 1) -> np.ndarray:
@@ -76,32 +86,44 @@ def per_period_rate(annual: float, periods_per_year: float) -> float:
     return math.expm1(math.log1p(annual) / periods_per_year)
 
 
-def sharpe_ratio(returns: pd.Series, periods_per_year: float, risk_free: float = 0.0) -> float:
+def per_period_rates(rate: Rate, returns: pd.Series, periods_per_year: float) -> float | np.ndarray:
+    """The rate per period: from a compound annual rate, or a Series of them as given,
+    refused unless it is on the returns' dates."""
+    if not isinstance(rate, pd.Series):
+        return per_period_rate(rate, periods_per_year)
+    ret._check_periods(periods_per_year)
+    if not rate.index.equals(returns.index):
+        raise ValueError("a series of risk-free rates must be on the returns' dates")
+    values = rate.to_numpy(dtype="float64")
+    if not np.isfinite(values).all() or (values <= -1.0).any():
+        raise ValueError("risk-free rates must be finite numbers above -100%")
+    return values
+
+
+def sharpe_ratio(returns: pd.Series, periods_per_year: float, risk_free: Rate = 0.0) -> float:
     """Mean excess return over its standard deviation, on a yearly scale."""
     values = _values(returns, minimum=2)
-    rate = per_period_rate(risk_free, periods_per_year)
-    if np.ptp(values) == 0.0:
-        raise ValueError("returns that never vary have no Sharpe ratio")
-    excess = values - rate
+    excess = values - per_period_rates(risk_free, returns, periods_per_year)
+    if np.ptp(excess) == 0.0:
+        raise ValueError("excess returns that never vary have no Sharpe ratio")
     return float(excess.mean() / excess.std(ddof=1) * math.sqrt(periods_per_year))
 
 
-def downside_deviation(returns: pd.Series, periods_per_year: float, target: float = 0.0) -> float:
+def downside_deviation(returns: pd.Series, periods_per_year: float, target: Rate = 0.0) -> float:
     """Root mean square shortfall below ``target`` over all returns, on a yearly scale."""
     values = _values(returns)
-    rate = per_period_rate(target, periods_per_year)
-    shortfall = np.minimum(values - rate, 0.0)
+    shortfall = np.minimum(values - per_period_rates(target, returns, periods_per_year), 0.0)
     return float(math.sqrt(np.mean(shortfall**2)) * math.sqrt(periods_per_year))
 
 
-def sortino_ratio(returns: pd.Series, periods_per_year: float, target: float = 0.0) -> float:
+def sortino_ratio(returns: pd.Series, periods_per_year: float, target: Rate = 0.0) -> float:
     """Mean return in excess of ``target`` over the downside deviation below it, yearly."""
     values = _values(returns)
     downside = downside_deviation(returns, periods_per_year, target)
     if downside == 0.0:
         raise ValueError("no return falls below the target, so the Sortino ratio has no bound")
-    rate = per_period_rate(target, periods_per_year)
-    return float((values.mean() - rate) * periods_per_year / downside)
+    excess = values - per_period_rates(target, returns, periods_per_year)
+    return float(np.mean(excess) * periods_per_year / downside)
 
 
 def drawdowns(returns: pd.Series) -> pd.Series:
@@ -226,7 +248,7 @@ def date_text(value: Hashable | None) -> Any:
 def measures(
     returns: pd.Series,
     periods_per_year: float,
-    risk_free: float = 0.0,
+    risk_free: Rate = 0.0,
     levels: Sequence[float] = LEVELS,
 ) -> dict[str, Any]:
     """Every measure above for one series, the risk-free rate also the Sortino target.
@@ -236,7 +258,7 @@ def measures(
     that never fall below the target) is ``None``.
     """
     # Checked here, so that a bad rate is refused rather than reported as undefined.
-    per_period_rate(risk_free, periods_per_year)
+    per_period_rates(risk_free, returns, periods_per_year)
     worst = max_drawdown(returns)
     tails = {}
     for level in levels:
@@ -265,17 +287,24 @@ def measures(
     }
 
 
-def run(prices: pd.DataFrame, weights_text: str, risk_free: float = 0.0) -> dict[str, Any]:
+def run(prices: pd.DataFrame, weights_text: str, risk_free: Rate = 0.0) -> dict[str, Any]:
     """The measures of every fund and of a portfolio of them, from the cache's daily returns.
 
     The portfolio is rebalanced to its weights at every close. Compound returns are per
     calendar year, with the trading days the data holds a year; everything else on a
     yearly scale uses 252 days, or 12 months for the Sharpe ratio of calendar-month
-    returns.
+    returns. A ``risk_free`` Series holds daily rates; the returns are then measured
+    over the days both cover, which must be the same trading days, and the monthly
+    ratio is against the rates compounded over each month's days.
     """
     daily = ret.total_returns(prices)
     tickers = [str(t) for t in daily.columns]
     weights = parse_weights(weights_text, tickers)
+    daily_rate = monthly_rate = risk_free
+    if isinstance(risk_free, pd.Series):
+        daily, rates = align(daily, risk_free.to_frame("rate"))
+        daily_rate = rates["rate"]
+        monthly_rate = ret.compound(daily_rate, "M")
     series = {t: daily[t] for t in tickers}
     series["portfolio"] = historical_portfolio_returns(daily, weights)
     first_close = wide(prices, "close").dropna().index[0]
@@ -285,10 +314,10 @@ def run(prices: pd.DataFrame, weights_text: str, risk_free: float = 0.0) -> dict
         monthly = ret.compound(returns, "M")
         out[name] = {
             "compound_return": float(ret.annualised_return(returns, per_year)),
-            **measures(returns, ret.TRADING_DAYS_PER_YEAR, risk_free),
-            "sharpe_ratio_monthly": or_none(sharpe_ratio, monthly, 12, risk_free),
+            **measures(returns, ret.TRADING_DAYS_PER_YEAR, daily_rate),
+            "sharpe_ratio_monthly": or_none(sharpe_ratio, monthly, 12, monthly_rate),
         }
-    return {
+    result = {
         "first_return": daily.index[0].date().isoformat(),
         "last_return": daily.index[-1].date().isoformat(),
         "daily_returns": len(daily),
@@ -296,6 +325,11 @@ def run(prices: pd.DataFrame, weights_text: str, risk_free: float = 0.0) -> dict
         "weights": dict(zip(tickers, check_weights(weights, tickers).tolist(), strict=True)),
         "series": out,
     }
+    if isinstance(risk_free, pd.Series):
+        result["risk_free"] = "one-month Treasury bill"
+        # Compound over the days used, as the funds' compound returns are.
+        result["risk_free_compound"] = float(ret.annualised_return(daily_rate, per_year))
+    return result
 
 
 def _ratio(value: float | None) -> str:
@@ -304,9 +338,13 @@ def _ratio(value: float | None) -> str:
 
 def _print(result: dict[str, Any]) -> None:
     weights = ", ".join(f"{t} {w:.1%}" for t, w in result["weights"].items() if w > 0)
+    if "risk_free_compound" in result:
+        rate = f"{result['risk_free']}, {result['risk_free_compound']:.2%} a year compounded"
+    else:
+        rate = f"{result['risk_free']:.2%} a year"
     print(
         f"{result['daily_returns']} daily returns, {result['first_return']} to "
-        f"{result['last_return']}; risk-free rate {result['risk_free']:.2%} a year\n"
+        f"{result['last_return']}; risk-free rate {rate}\n"
         f"portfolio, rebalanced daily: {weights}"
     )
     print(
@@ -339,6 +377,10 @@ def _print(result: dict[str, Any]) -> None:
         print(f"{name:10}" + "".join(f" {c:>29}" for c in cells))
 
 
+def _risk_free_argument(text: str) -> float | str:
+    return BILLS if text == BILLS else float(text)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m portfolio_risk.risk",
@@ -350,16 +392,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--risk-free",
-        type=float,
+        type=_risk_free_argument,
         default=0.0,
-        help="compound annual risk-free rate, also the Sortino target (default 0)",
+        help="compound annual risk-free rate, also the Sortino target (default 0), or "
+        f'"{BILLS}" for the daily one-month Treasury bill rate from the factor cache',
+    )
+    parser.add_argument(
+        "--factors",
+        type=Path,
+        default=french.DEFAULT_CACHE,
+        help=f"the factor cache, for --risk-free {BILLS}",
     )
     parser.add_argument("--json", type=Path, help="also write the figures to this file")
     args = parser.parse_args(argv)
     try:
         prices = load_cache(args.cache)
-        sha256 = read_manifest(args.cache)["sha256"]
-        result = {"cache_sha256": sha256, **run(prices, args.weights, args.risk_free)}
+        result = {"cache_sha256": read_manifest(args.cache)["sha256"]}
+        risk_free = args.risk_free
+        if risk_free == BILLS:
+            risk_free = french.daily_risk_free(french.load_factors(args.factors))
+            result["factors_sha256"] = french.read_manifest(args.factors)["sha256"]
+        result |= run(prices, args.weights, risk_free)
         # Written before anything is printed, so a failure leaves no half-finished run.
         if args.json:
             args.json.parent.mkdir(parents=True, exist_ok=True)
