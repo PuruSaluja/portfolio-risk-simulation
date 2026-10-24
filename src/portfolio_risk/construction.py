@@ -155,8 +155,9 @@ def minimum_cvar(
 ) -> tuple[pd.Series, float, float]:
     """The weights with the lowest historical CVaR of one period's return at ``level``.
 
-    Returns the weights, the CVaR and the value at risk at the optimum, as positive
-    losses per period.
+    Returns the weights, the CVaR and the threshold ``a`` at the optimum, as positive
+    losses per period; the threshold is the value at risk unless ``(1 - level)`` times
+    the number of periods is a whole number (see above).
     """
     from scipy import sparse
     from scipy.optimize import linprog

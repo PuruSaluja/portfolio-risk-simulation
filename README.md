@@ -105,17 +105,18 @@ August 2026 CRSP database: 5,449 trading days, 3 January 2005 to 31 August
 factors end a month before the prices; every result that uses them is over
 the days both cover. The fetch checks that the two daily files hold the same
 days and the same `Mkt-RF`, `HML` and `RF` (they do on every day of the
-window), and that the monthly file has a rate for every month. The library
-revises its history when CRSP does, so a later fetch can differ from the
-manifest, and the check then says so.
+window), and that the monthly file has a rate for every month. Each file names
+the CRSP database it was built from, and the library rebuilds the files from
+newer ones, so a later fetch can differ from the manifest; the check then
+says so.
 
 **The daily bill rate is rebuilt from the monthly one.** The daily files give
 `RF` to two decimals of a percent: 0.00, 0.01 or 0.02 on every day of the
 window. Compounded, those rounded figures give 5.13% for 2025 where the
 monthly file's rates compound to 4.25%, and 0.00% for 2010 against 0.10%. The
-library builds its daily rate as the simple daily rate that compounds to the
-month's rate over the month's trading days, then rounds it;
-`french.daily_risk_free` does the same without the rounding. Rounded, it gives
+files' notes describe the daily rate as the simple daily rate that compounds to
+the month's rate over the month's trading days, and it is published to two
+decimals; `french.daily_risk_free` computes that rate without the rounding. Rounded, it gives
 the published figure on 5,407 of the 5,449 days. Over the window it compounds
 to 1.74% a year.
 
@@ -704,7 +705,7 @@ python -m portfolio_risk.factors --json results/factors.json
 ```
 
 The tests check the fit against textbook formulas and the Newey-West errors
-against the formula written out as loops over the observations, at 0 to 9
+against the formula written out as loops over the observations, at 0, 1, 4 and 9
 lags. On the real data, statsmodels 0.14.6 (run outside the project) gives
 the same coefficients to 1e-13, OLS errors to 3e-15 and Newey-West errors to
 2.6e-13 (relative), for every fund and both models.
@@ -814,11 +815,13 @@ portfolio that, unlike the tangency portfolio, need no expected returns:
   scipy (the project's one optimiser that is not its own code).
 
 The tests check that risk parity's contributions are equal to 1e-12 for up to
-50 funds, any risk budgets, and that it reduces to inverse volatility when
-correlations are equal; and that the CVaR programme's optimum is the
-expected shortfall `risk.expected_shortfall` gives its weights, that no
-portfolio on a 1% grid of three funds has a lower one, and that its threshold
-is the value at risk. On the real returns the two agree to 4e-18.
+50 funds and over 900 random matrices of three scales, that they follow
+unequal risk budgets, and that risk parity reduces to inverse volatility when
+correlations are equal; and that the CVaR programme's optimum is the expected
+shortfall `risk.expected_shortfall` gives its weights, that no portfolio on a
+1% grid of three funds has a lower one, and that its threshold is the value
+at risk when the tail is not a whole number of days. On the real returns the
+two agree to 4e-18.
 
 ```bash
 python -m portfolio_risk.construction --json results/construction.json

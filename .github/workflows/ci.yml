@@ -1,6 +1,7 @@
 # Lint and the test suite on a clean install, so a pass shows pyproject.toml
-# declares everything the code needs. The tests never reach Yahoo: the download
-# is stood in for, so CI needs no network beyond the install.
+# declares everything the code needs. The tests never reach Yahoo or the factor
+# library: the downloads are stood in for, so CI needs no network beyond the
+# install.
 
 name: CI
 
