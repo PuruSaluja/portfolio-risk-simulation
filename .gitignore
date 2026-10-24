@@ -13,8 +13,8 @@ htmlcov/
 .env
 .env.local
 
-# Fetched market data: Yahoo's prices are not redistributed. The manifest
-# beside the cache is committed.
+# Fetched data: Yahoo's prices and the factor library's figures are not
+# redistributed. The manifest beside each cache is committed.
 data/*.csv
 
 # OS

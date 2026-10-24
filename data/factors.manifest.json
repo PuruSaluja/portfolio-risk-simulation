@@ -1,0 +1,21 @@
+{
+  "source": "Kenneth R. French Data Library",
+  "files": {
+    "daily3": "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_daily_CSV.zip",
+    "daily5": "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_daily_CSV.zip",
+    "monthly3": "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_CSV.zip"
+  },
+  "vintages": {
+    "daily3": "This file was created by using the 202608 CRSP database.",
+    "daily5": "This file was created by using the 202608 CRSP database.",
+    "monthly3": "This file was created using the 202608 CRSP database."
+  },
+  "fetched_at": "2026-10-24T17:55:21+00:00",
+  "start": "2005-01-01",
+  "end": "2026-09-30",
+  "file": "factors.csv",
+  "sha256": "3e530a1ed89f1e1491f4fa19980a57fdbc9ebad9128918ce2e49dea4aca39202",
+  "rows": 5449,
+  "first": "2005-01-03",
+  "last": "2026-08-31"
+}
