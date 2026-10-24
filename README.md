@@ -5,8 +5,9 @@ daily market data.
 
 > **Status:** in progress. The data ingestion, the returns and covariance
 > engine, the Monte Carlo simulation, the risk measures, the scenario engine
-> and the mean-variance optimiser are done; the parts below are built in order, and every figure this README
-> gives comes from a run of the committed code.
+> and the mean-variance optimiser are done; the parts below are built in
+> order, and every figure this README gives comes from a run of the committed
+> code.
 
 ## The data is real
 
@@ -172,10 +173,12 @@ Three models, each answering for an assumption the one before makes:
   at the sample's, so only the tails change). Every fund on a day shares one
   draw of the t's mixing variable, so a violent day is violent for all of them.
   Days are still independent. The likelihood matches scipy's `multivariate_t`
-  to about 1e-15, and the fitted degrees of freedom scipy's optimiser to 7e-9. A
-  fund that never varies, or one that is a mix of others, leaves the returns in
-  fewer dimensions than funds; the likelihood is then the density within the
-  space they span (for a fund that never varies, that of the other funds).
+  to about 1e-15, and scipy's bounded and Brent searches find degrees of
+  freedom within 4e-7 of the fitted ones, where the likelihood is flat to its
+  last digit, so the fit is no finer than that. A fund that never varies, or
+  one that is a mix of others, leaves the returns in fewer dimensions than
+  funds; the likelihood is then the density within the space they span (for a
+  fund that never varies, that of the other funds).
 - **Stationary block bootstrap** (Politis and Romano, 1994). Paths are built
   from blocks of consecutive historical days, whole days at a time so the funds
   keep the moves they made together; each block starts on a random day and its
@@ -401,8 +404,8 @@ follows it to the close of the last.
 The tests check buy-and-hold, monthly, quarterly and yearly paths against
 direct products of each fund's growth, and daily rebalancing against the
 fixed-weight portfolio. On the real data a separate recalculation of the
-daily, monthly and buy-and-hold compound returns agrees to 7e-16, and every
-buy-and-hold stress return matches the funds' growth over the window.
+daily, monthly and buy-and-hold compound returns agrees to within 1e-15, and
+every buy-and-hold stress return matches the funds' growth over the window.
 
 ```bash
 python -m portfolio_risk.scenarios --json results/scenarios.json
