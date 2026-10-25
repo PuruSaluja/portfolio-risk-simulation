@@ -37,6 +37,13 @@ the sample (or Ledoit-Wolf) covariance times 252. With the sample covariance, a
 portfolio's ratio here is the Sharpe ratio ``risk.sharpe_ratio`` gives its daily
 returns, rebalanced every close, at the same risk-free rate.
 
+The risk-free rate may instead be daily rates, such as the Treasury bill rate
+``french.daily_risk_free`` gives. The tangency portfolio and the expected ratios need
+one constant rate: ``constant_rate`` gives the one whose yearly arithmetic rate is 252
+times the daily rates' mean over the returns the estimates come from, so the expected
+excess return is the mean daily excess return times 252, as with a constant rate. The
+realised ratios subtract each day's rate, as ``risk.sharpe_ratio`` does.
+
 ``python -m portfolio_risk.frontier`` gives the frontier, the minimum-variance and
 tangency portfolios and equal weights from the cache's daily total returns, and the
 same three chosen from the returns up to each of a few split dates and held after it:
@@ -58,11 +65,12 @@ import numpy as np
 import pandas as pd
 
 from portfolio_risk import covariance as cov
+from portfolio_risk import french, risk
 from portfolio_risk import returns as ret
-from portfolio_risk import risk
-from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest
+from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
+from portfolio_risk.factors import align
 from portfolio_risk.montecarlo import historical_portfolio_returns
-from portfolio_risk.risk import per_period_rate
+from portfolio_risk.risk import BILLS, Rate, per_period_rate
 
 Estimator = Literal["sample", "ledoit-wolf"]
 # Bisection steps for the tangency portfolio: a share of the frontier between 0 and 1
@@ -352,6 +360,49 @@ def estimates(daily: pd.DataFrame, estimator: Estimator = "sample") -> tuple:
     return expected, cov.annualise(matrix, days)
 
 
+def rates_on(risk_free: Rate, days: pd.DatetimeIndex) -> Rate:
+    """``risk_free`` for returns on ``days``: a constant rate as it is, daily rates on
+    those days, refused unless every one of them has a rate."""
+    if not isinstance(risk_free, pd.Series):
+        return risk_free
+    missing = days.difference(risk_free.index)
+    if len(missing):
+        raise ValueError(f"no risk-free rate on {missing[0].date()} ({len(missing)} days)")
+    return risk_free.loc[days]
+
+
+def constant_rate(risk_free: Rate, days: pd.DatetimeIndex) -> float:
+    """A compound annual rate for ``max_sharpe`` and ``sharpe``: ``risk_free`` itself,
+    or for daily rates the one their mean over ``days`` compounds to in 252 days, so
+    that the yearly arithmetic rate those take from it is 252 times the mean."""
+    if not isinstance(risk_free, pd.Series):
+        return risk_free
+    mean = float(rates_on(risk_free, days).mean())
+    return math.expm1(ret.TRADING_DAYS_PER_YEAR * math.log1p(mean))
+
+
+def on_common_days(daily: pd.DataFrame, risk_free: Rate) -> tuple[pd.DataFrame, Rate]:
+    """For daily rates, the returns and the rates over the days both cover, refused
+    unless they hold the same trading days there; a constant rate leaves both as given."""
+    if not isinstance(risk_free, pd.Series):
+        return daily, risk_free
+    daily, rates = align(daily, risk_free.to_frame("rate"))
+    return daily, rates["rate"]
+
+
+def bill_rate(risk_free: Rate, prices: pd.DataFrame, daily: pd.DataFrame) -> dict[str, Any]:
+    """For daily rates, the keys that say so in the output: the rate's name and what it
+    compounds to a year over ``daily``'s days, as the risk measures give it."""
+    if not isinstance(risk_free, pd.Series):
+        return {}
+    first_close = wide(prices, "close").dropna().index[0]
+    per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *daily.index]))
+    return {
+        "risk_free": "one-month Treasury bill",
+        "risk_free_compound": float(ret.annualised_return(risk_free, per_year)),
+    }
+
+
 # The ends of every third year from 2009: each split leaves at least four years on
 # either side.
 DEFAULT_SPLITS = tuple(date(year, 12, 31) for year in (2009, 2012, 2015, 2018, 2021))
@@ -382,15 +433,18 @@ def _described(
     }
 
 
-def _realised(daily: pd.DataFrame, w: pd.Series, risk_free: float, first: pd.Timestamp) -> dict:
-    """What a portfolio, rebalanced every close, returned over ``daily``."""
+def _realised(daily: pd.DataFrame, w: pd.Series, risk_free: Rate, first: pd.Timestamp) -> dict:
+    """What a portfolio, rebalanced every close, returned over ``daily``; daily rates are
+    subtracted day by day."""
     history = historical_portfolio_returns(daily, w.to_dict())
     per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first, *daily.index]))
     days = ret.TRADING_DAYS_PER_YEAR
     return {
         "mean": float(ret.annualised_mean(history, days)),
         "volatility": float(ret.annualised_volatility(history, days)),
-        "sharpe_ratio": risk.or_none(risk.sharpe_ratio, history, days, risk_free),
+        "sharpe_ratio": risk.or_none(
+            risk.sharpe_ratio, history, days, rates_on(risk_free, daily.index)
+        ),
         "compound_return": float(ret.annualised_return(history, per_year)),
     }
 
@@ -404,9 +458,13 @@ def _span(daily: pd.DataFrame) -> dict[str, Any]:
 
 
 def _held_out(
-    daily: pd.DataFrame, split: date, estimator: Estimator, risk_free: float, max_weight: float
+    daily: pd.DataFrame, split: date, estimator: Estimator, risk_free: Rate, max_weight: float
 ) -> dict[str, Any]:
-    """The three portfolios chosen from the returns up to ``split`` and held after it."""
+    """The three portfolios chosen from the returns up to ``split`` and held after it.
+
+    For daily rates the tangency portfolio and the expected ratios before the split take
+    the constant rate of the days before it, those chosen after it of the days after.
+    """
     before = daily.loc[daily.index <= pd.Timestamp(split)]
     after = daily.loc[daily.index > pd.Timestamp(split)]
     funds = daily.shape[1]
@@ -418,21 +476,27 @@ def _held_out(
         )
     early = estimates(before, estimator)
     late = estimates(after, estimator)
-    held = _choose(*early, risk_free, max_weight)
-    return {
+    rate_before = constant_rate(risk_free, before.index)
+    rate_after = constant_rate(risk_free, after.index)
+    held = _choose(*early, rate_before, max_weight)
+    out: dict[str, Any] = {
         "date": split.isoformat(),
         "estimated_on": _span(before),
         "held_on": _span(after),
+    }
+    if isinstance(risk_free, pd.Series):
+        out["constant_rate"] = {"estimated_on": rate_before, "held_on": rate_after}
+    return out | {
         "portfolios": {
             name: {
-                **_described(w, *early, risk_free),
+                **_described(w, *early, rate_before),
                 "realised": _realised(after, w, risk_free, before.index[-1]),
             }
             for name, w in held.items()
         },
         "chosen_after": {
-            name: _described(w, *late, risk_free)
-            for name, w in _choose(*late, risk_free, max_weight).items()
+            name: _described(w, *late, rate_after)
+            for name, w in _choose(*late, rate_after, max_weight).items()
             if name != "equal"
         },
     }
@@ -443,29 +507,36 @@ def run(
     estimator: Estimator = "sample",
     max_weight: float = 1.0,
     points: int = 21,
-    risk_free: float = 0.0,
+    risk_free: Rate = 0.0,
     splits: Sequence[date] = DEFAULT_SPLITS,
 ) -> dict[str, Any]:
     """The frontier and three portfolios from the whole history, and for each of
     ``splits`` the same portfolios chosen from the returns up to that date and held after.
 
     The three are the minimum-variance portfolio, the tangency portfolio and equal
-    weights. Held after a split, each is rebalanced to its weights at every close.
+    weights. Held after a split, each is rebalanced to its weights at every close. A
+    ``risk_free`` Series holds daily rates; the returns are then those of the days both
+    cover.
     """
     if len(set(splits)) != len(splits):
         raise ValueError("a split date is given twice")
-    daily = ret.total_returns(prices)
+    daily, risk_free = on_common_days(ret.total_returns(prices), risk_free)
     # Checked before the whole-history optimisation, so a bad date does not wait for it.
     held_out = [_held_out(daily, split, estimator, risk_free, max_weight) for split in splits]
     expected, covariance = estimates(daily, estimator)
-    chosen = _choose(expected, covariance, risk_free, max_weight)
+    rate = constant_rate(risk_free, daily.index)
+    chosen = _choose(expected, covariance, rate, max_weight)
     table = frontier(expected, covariance, points, max_weight)
     tickers = [str(t) for t in daily.columns]
+    bills = bill_rate(risk_free, prices, daily)
+    if bills:
+        bills["constant_rate"] = rate
     return {
         **_span(daily),
         "estimator": estimator,
         "max_weight": max_weight,
         "risk_free": risk_free,
+        **bills,
         "funds": {
             str(t): {
                 "expected_return": float(expected[t]),
@@ -474,13 +545,13 @@ def run(
             for t in daily.columns
         },
         "portfolios": {
-            name: _described(w, expected, covariance, risk_free) for name, w in chosen.items()
+            name: _described(w, expected, covariance, rate) for name, w in chosen.items()
         },
         "frontier": [
             {
                 "expected_return": float(row["expected_return"]),
                 "volatility": float(row["volatility"]),
-                "sharpe_ratio": sharpe(row[tickers], expected, covariance, risk_free),
+                "sharpe_ratio": sharpe(row[tickers], expected, covariance, rate),
                 "weights": {t: float(row[t]) for t in tickers},
             }
             for _, row in table.iterrows()
@@ -493,12 +564,22 @@ def _weights_text(weights: dict[str, float]) -> str:
     return ", ".join(f"{t} {v:.1%}" for t, v in weights.items() if v >= 0.0005) or "-"
 
 
+def rate_text(result: dict[str, Any]) -> str:
+    """The risk-free rate as the commands print it."""
+    if "risk_free_compound" not in result:
+        return f"{result['risk_free']:.2%} a year"
+    return (
+        f"{result['risk_free']}, {result['risk_free_compound']:.2%} a year compounded "
+        f"(expected ratios at its mean, {result['constant_rate']:.2%})"
+    )
+
+
 def _print(result: dict[str, Any]) -> None:
     cap = "" if result["max_weight"] == 1.0 else f", at most {result['max_weight']:.0%} a fund"
     print(
         f"{result['daily_returns']} daily returns, {result['first_return']} to "
         f"{result['last_return']}; {result['estimator']} covariance; risk-free rate "
-        f"{result['risk_free']:.2%} a year; long only{cap}"
+        f"{rate_text(result)}; long only{cap}"
     )
     print(f"\n{'':18} {'expected':>8} {'vol':>7} {'Sharpe':>7}  weights")
     for name, p in result["portfolios"].items():
@@ -550,6 +631,16 @@ def _splits(texts: Sequence[str] | None) -> tuple[date, ...]:
         ) from None
 
 
+def load_risk_free(argument: float | str, factors: Path, result: dict[str, Any]) -> Rate:
+    """The rate ``--risk-free`` names: the number, or the daily bill rate from the
+    factor cache, whose checksum then goes into ``result``."""
+    if argument != BILLS:
+        return argument
+    rates = french.daily_risk_free(french.load_factors(factors))
+    result["factors_sha256"] = french.read_manifest(factors)["sha256"]
+    return rates
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m portfolio_risk.frontier", description=__doc__.splitlines()[0]
@@ -566,9 +657,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--risk-free",
-        type=float,
+        type=risk._risk_free_argument,
         default=0.0,
-        help="compound annual risk-free rate (default 0)",
+        help=f'compound annual risk-free rate (default 0), or "{BILLS}" for the daily '
+        "one-month Treasury bill rate from the factor cache",
+    )
+    parser.add_argument(
+        "--factors",
+        type=Path,
+        default=french.DEFAULT_CACHE,
+        help=f"the factor cache, for --risk-free {BILLS}",
     )
     parser.add_argument(
         "--split",
@@ -582,11 +680,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         splits = _splits(args.split)
         prices = load_cache(args.cache)
-        sha256 = read_manifest(args.cache)["sha256"]
-        result = {
-            "cache_sha256": sha256,
-            **run(prices, args.covariance, args.max_weight, args.points, args.risk_free, splits),
-        }
+        result = {"cache_sha256": read_manifest(args.cache)["sha256"]}
+        risk_free = load_risk_free(args.risk_free, args.factors, result)
+        result |= run(prices, args.covariance, args.max_weight, args.points, risk_free, splits)
         # Written before anything is printed, so a failure leaves no half-finished run.
         if args.json:
             args.json.parent.mkdir(parents=True, exist_ok=True)

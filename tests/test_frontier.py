@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from portfolio_risk import french
 from portfolio_risk import frontier as fr
 from portfolio_risk.data import COLUMNS, load_cache, write_cache
 from portfolio_risk.frontier import main
@@ -579,3 +580,170 @@ def test_a_capped_tangency_portfolio_is_the_best_over_every_pattern_of_bounds(se
         expected = capped_tangency_by_pattern(mu, covariance, cap, rate)
         w = fr.max_sharpe(mu, covariance, risk_free, cap)
         assert w.to_numpy() == pytest.approx(expected, abs=1e-12)
+
+
+def daily_rates(days, start=0.0001, step=0.00001) -> pd.Series:
+    """Daily rates on ``days`` that rise by ``step`` each month."""
+    months = days.month + 12 * (days.year - days[0].year)
+    return pd.Series(start + step * (months - months[0]), index=days, dtype=float)
+
+
+def test_a_constant_rate_is_that_rate_and_daily_rates_give_their_mean_s_rate() -> None:
+    days = pd.bdate_range("2024-01-01", periods=300)
+    assert fr.constant_rate(0.03, days) == 0.03
+    flat = pd.Series(fr.per_period_rate(0.03, 252), index=days)
+    assert fr.constant_rate(flat, days) == pytest.approx(0.03, rel=1e-13)
+    rates = daily_rates(days)
+    # The yearly arithmetic rate the optimiser takes from it is 252 times the mean.
+    for window in (days, days[:40], days[200:]):
+        rate = fr.constant_rate(rates, window)
+        mean = rates.loc[window].mean()
+        assert fr.per_period_rate(rate, 252) * 252 == pytest.approx(252 * mean, rel=1e-13)
+    assert fr.constant_rate(rates, days[:40]) < fr.constant_rate(rates, days[200:])
+
+
+def test_daily_rates_must_cover_every_day_of_the_returns() -> None:
+    days = pd.bdate_range("2024-01-01", periods=30)
+    rates = daily_rates(days)
+    assert fr.rates_on(0.02, days) == 0.02
+    assert fr.rates_on(rates, days[5:10]).index.equals(days[5:10])
+    later = pd.bdate_range("2024-01-01", periods=33)
+    with pytest.raises(ValueError, match="no risk-free rate on 2024-02-12 \\(3 days\\)"):
+        fr.rates_on(rates, later)
+    with pytest.raises(ValueError, match="no risk-free rate"):
+        fr.constant_rate(rates, later)
+
+
+def factor_cache(tmp_path: Path, end="2024-11-29") -> Path:
+    """A factor cache over the price days up to ``end``, the bill rate rising each month."""
+    days = pd.bdate_range("2023-01-02", end)
+    table = pd.DataFrame({"date": days.date})
+    for column in ("mkt_rf", "smb", "hml", "rf", "smb5", "rmw", "cma"):
+        table[column] = 0.01
+    table["rf_month"] = np.round(0.2 + 0.03 * (days.month + 12 * (days.year - 2023)), 2)
+    path = tmp_path / "factors.csv"
+    french.write_cache(table, path, start=date(2023, 1, 1), end=date(2024, 12, 31), vintages={})
+    return path
+
+
+def test_the_command_measures_against_the_bill_over_the_days_it_covers(
+    tmp_path: Path, capsys
+) -> None:
+    path = cache(tmp_path)
+    factors = factor_cache(tmp_path)
+    out = tmp_path / "bills.json"
+    argv = ["--cache", str(path), "--factors", str(factors), "--json", str(out)]
+    assert main([*argv, "--risk-free", "bills", "--split", "2023-12-29", "--points", "5"]) == 0
+    printed = capsys.readouterr().out
+    assert "499 daily returns, 2023-01-03 to 2024-11-29" in printed
+    assert "risk-free rate one-month Treasury bill, " in printed
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["risk_free"] == "one-month Treasury bill"
+    assert written["factors_sha256"] == french.read_manifest(factors)["sha256"]
+    rate = french.daily_risk_free(french.load_factors(factors)).loc["2023-01-03":]
+    daily = total_returns(load_cache(path)).loc[: rate.index[-1]]
+    assert daily.index.equals(rate.index)
+    years = (rate.index[-1] - pd.Timestamp("2023-01-02")).days / 365.25
+    assert written["risk_free_compound"] == pytest.approx(
+        (1 + rate).prod() ** (1 / years) - 1, rel=1e-9
+    )
+    # The tangency portfolio and the expected ratios at the mean rate of the window.
+    whole = (1 + rate.mean()) ** 252 - 1
+    assert written["constant_rate"] == pytest.approx(whole, rel=1e-12)
+    expected, covariance = fr.estimates(daily)
+    tangency = fr.max_sharpe(expected, covariance, written["constant_rate"])
+    assert written["portfolios"]["max_sharpe"]["weights"] == tangency.to_dict()
+    for row in written["frontier"]:
+        assert row["sharpe_ratio"] == pytest.approx(
+            (row["expected_return"] - 252 * rate.mean()) / row["volatility"], rel=1e-12
+        )
+    split = written["splits"][0]
+    before, after = daily.loc[:"2023-12-29"], daily.loc["2024-01-01":]
+    rates_before, rates_after = rate.loc[before.index], rate.loc[after.index]
+    assert split["constant_rate"]["estimated_on"] == pytest.approx(
+        (1 + rates_before.mean()) ** 252 - 1, rel=1e-12
+    )
+    assert split["constant_rate"]["held_on"] == pytest.approx(
+        (1 + rates_after.mean()) ** 252 - 1, rel=1e-12
+    )
+    assert rates_before.mean() < rates_after.mean()
+    early = fr.estimates(before)
+    held = fr.max_sharpe(*early, split["constant_rate"]["estimated_on"])
+    entry = split["portfolios"]["max_sharpe"]
+    assert entry["weights"] == held.to_dict()
+    # Neither the zero rate nor the rate of the days after gives the same weights.
+    assert held.to_dict() != fr.max_sharpe(*early).to_dict()
+    assert held.to_dict() != fr.max_sharpe(*early, split["constant_rate"]["held_on"]).to_dict()
+    mean, sd = fr.moments(held, *early)
+    assert entry["sharpe_ratio"] == pytest.approx((mean - 252 * rates_before.mean()) / sd)
+    # Realised: the bill subtracted day by day over the days held.
+    history = historical_portfolio_returns(after, held.to_dict())
+    assert entry["realised"]["sharpe_ratio"] == pytest.approx(
+        sharpe_ratio(history, 252, rates_after), rel=1e-12
+    )
+    later = fr.max_sharpe(*fr.estimates(after), split["constant_rate"]["held_on"])
+    assert split["chosen_after"]["max_sharpe"]["weights"] == later.to_dict()
+    mean, sd = fr.moments(later, *fr.estimates(after))
+    assert split["chosen_after"]["max_sharpe"]["sharpe_ratio"] == pytest.approx(
+        (mean - 252 * rates_after.mean()) / sd, rel=1e-12
+    )
+
+
+def test_the_whole_history_tangency_portfolio_takes_the_bill_s_mean_rate() -> None:
+    # 2023 alone, where the tangency portfolio moves with the rate.
+    prices_2023 = prices()
+    prices_2023 = prices_2023[prices_2023["date"] <= date(2023, 12, 29)]
+    daily = total_returns(prices_2023)
+    rates = daily_rates(daily.index, start=0.0001, step=0.00002)
+    result = fr.run(prices_2023, points=3, risk_free=rates, splits=())
+    expected, covariance = fr.estimates(daily)
+    rate = (1 + rates.mean()) ** 252 - 1
+    tangency = fr.max_sharpe(expected, covariance, rate)
+    assert result["portfolios"]["max_sharpe"]["weights"] == pytest.approx(
+        tangency.to_dict(), abs=1e-12
+    )
+    assert abs(tangency - fr.max_sharpe(expected, covariance)).max() > 0.05
+    for p in result["portfolios"].values():
+        mean, sd = fr.moments(pd.Series(p["weights"]), expected, covariance)
+        assert p["sharpe_ratio"] == pytest.approx((mean - 252 * rates.mean()) / sd, rel=1e-12)
+    # Chosen after a split: at the rate of the days after it, not before.
+    split = fr.run(prices_2023, points=3, risk_free=rates, splits=[date(2023, 2, 28)])["splits"][0]
+    late = fr.estimates(daily.loc["2023-03-01":])
+    after = fr.max_sharpe(*late, split["constant_rate"]["held_on"])
+    assert split["chosen_after"]["max_sharpe"]["weights"] == pytest.approx(
+        after.to_dict(), abs=1e-12
+    )
+    before = fr.max_sharpe(*late, split["constant_rate"]["estimated_on"])
+    assert abs(after - before).max() > 0.01
+
+
+def test_a_constant_rate_adds_nothing_to_the_output(tmp_path: Path) -> None:
+    out = tmp_path / "zero.json"
+    argv = ["--cache", str(cache(tmp_path)), "--json", str(out), "--split", "2023-12-29"]
+    assert main(argv) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["risk_free"] == 0.0 and written["last_return"] == "2024-12-31"
+    for key in ("risk_free_compound", "constant_rate", "factors_sha256"):
+        assert key not in written
+    assert "constant_rate" not in written["splits"][0]
+
+
+def test_bills_the_cache_lacks_or_that_miss_a_day_are_refused_plainly(
+    tmp_path: Path, capsys
+) -> None:
+    path = cache(tmp_path)
+    argv = ["--cache", str(path), "--split", "none", "--risk-free", "bills"]
+    assert main([*argv, "--factors", str(tmp_path / "none.csv")]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "" and "none.manifest.json is missing" in captured.err
+    factors = factor_cache(tmp_path)
+    table = pd.read_csv(factors, dtype={"date": str})
+    table = table[table["date"] != "2023-06-14"]
+    table["date"] = [date.fromisoformat(d) for d in table["date"]]
+    french.write_cache(table, factors, start=date(2023, 1, 1), end=date(2024, 12, 31), vintages={})
+    assert main([*argv, "--factors", str(factors)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "" and "2023-06-14 is in the returns only" in captured.err
+    with pytest.raises(SystemExit):
+        main([*argv[:-1], "Bills"])
+    assert "a compound annual rate such as 0.02, or bills, not 'Bills'" in capsys.readouterr().err
