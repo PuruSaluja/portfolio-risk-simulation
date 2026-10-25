@@ -461,8 +461,8 @@ and a rule decides when they are reset to the targets: every close (`daily`,
 the fixed-weight portfolio of the sections above), the last close of each
 month, quarter or year, `never` (buy and hold), or `band:x`, whenever a weight
 has drifted more than `x` from its target. Turnover at a rebalance is half the
-weight traded. **No trading costs are charged here**; the cost-aware backtest
-comes later.
+weight traded. **No trading costs are charged here**; [Trading
+costs](#trading-costs) charges them.
 
 Four mixes: **equity** (SPY, IWM, EFA and EEM, 25% each), **60/40** (SPY and
 AGG), **equal weight** (all eight funds) and **permanent** (SPY, TLT, GLD and
@@ -551,8 +551,9 @@ What they show:
   negative day-to-day autocorrelation measured above: selling what rose today
   gains when part of the rise reverses. It is one history, before costs, and
   daily rebalancing trades 48.6% to 81.5% of the portfolio a year against 9.3%
-  to 15.8% monthly, so the cost-aware backtest decides whether any of it
-  survives. A 5-point band traded 2.2% to 5.2% a year, close
+  to 15.8% monthly, so costs decide whether any of it survives ([Trading
+  costs](#trading-costs): below 12.9 to 35.2 basis points a trade, by mix). A
+  5-point band traded 2.2% to 5.2% a year, close
   to yearly rebalancing (2.9% to 4.7%), and returned 8.41% for equal weight,
   the most of its six.
 - **Long Treasuries rose in every stress period but 2022**, and gold and AGG
@@ -565,6 +566,112 @@ What they show:
   never rebalancing lost 30.2% for the 60/40 against 35.8% rebalanced monthly,
   and 30.7% against 38.6% for equal weight. In the shorter windows the rules
   differ by at most 1.5 points for any mix.
+
+## Trading costs
+
+[`costs.py`](src/portfolio_risk/costs.py) charges the scenario backtests for
+their trades. A trade of a value `x` in a fund costs `k x`, where `k`, the
+one-way cost per unit traded, is a commission plus half the fund's quoted
+bid-ask spread (a round trip crosses the whole spread). The costs are paid
+out of the portfolio at the rebalancing close, which then holds exactly its
+target weights: with the portfolio worth 1 before trading, drifted weights
+`d` and targets `w`, the value left `v` solves `v + sum k_i |w_i v - d_i| = 1`,
+which Newton's method solves exactly. Costs scale the portfolio's value and
+never its weights, so the closes a rule trades on, and the weights it trades
+from, are those of the cost-free backtest, for the band rule too. The
+purchase at the first close is not charged (every rule makes it), nor are
+reinvested distributions; costs are proportional, with no fixed fees, market
+impact or taxes.
+
+**The costs are levels, not measurements.** The price cache holds daily
+closes only, with no bid, ask, high or low, so it cannot say what these funds
+cost to trade. The command reads every backtest at one-way costs of 0, 1, 5,
+10, 25 and 50 basis points per unit traded, and finds the **break-even cost**,
+the same for every fund, at which one rule's lead over another is gone.
+
+The tests check the net returns against a loop that holds the funds in money,
+pays the costs inside it and decides the band rule's trades from its own
+after-cost weights: they agree to 1e-15 for five rules and three cost
+settings, one with a different cost for each fund. Newton's method is checked
+against bisection for 2 to 50 funds, and the break-even cost against a scan.
+
+```bash
+python -m portfolio_risk.costs --json results/costs.json
+```
+
+`--cost` sets a level (it may be given more than once), `--spread` adds half
+of a quoted spread to each, one for every fund (`0.0002`) or one each
+(`SPY=0.0001,EEM=0.0006`), `--mix` and `--rule` are as in the scenarios, and
+`--compare` names two rules for a break-even cost (by default `daily,monthly`
+and `band:0.05,never`).
+
+### Results
+
+4 January 2005 to 30 September 2026
+([`results/costs.json`](results/costs.json)), compound return a year before
+costs and after a one-way cost per unit traded of:
+
+| Mix | Rebalancing | Before costs | Turnover a year | 1 bp | 5 bp | 10 bp | 25 bp | 50 bp |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Equity | daily | 8.57% | 49.1% | 8.56% | 8.52% | 8.46% | 8.31% | 8.04% |
+| Equity | monthly | 8.46% | 10.0% | 8.46% | 8.45% | 8.44% | 8.41% | 8.35% |
+| Equity | quarterly | 8.43% | 5.3% | 8.43% | 8.43% | 8.42% | 8.40% | 8.38% |
+| Equity | yearly | 8.49% | 2.9% | 8.49% | 8.49% | 8.48% | 8.47% | 8.46% |
+| Equity | never (buy and hold) | 8.48% | 0.0% | 8.48% | 8.48% | 8.48% | 8.48% | 8.48% |
+| Equity | 5-point band | 8.54% | 2.2% | 8.54% | 8.54% | 8.54% | 8.53% | 8.52% |
+| 60/40 | daily | 8.09% | 48.6% | 8.08% | 8.04% | 7.99% | 7.83% | 7.57% |
+| 60/40 | monthly | 7.87% | 9.3% | 7.87% | 7.86% | 7.85% | 7.82% | 7.77% |
+| 60/40 | quarterly | 7.96% | 6.0% | 7.96% | 7.96% | 7.95% | 7.93% | 7.90% |
+| 60/40 | yearly | 8.02% | 3.2% | 8.02% | 8.02% | 8.02% | 8.01% | 7.99% |
+| 60/40 | never (buy and hold) | 8.91% | 0.0% | 8.91% | 8.91% | 8.91% | 8.91% | 8.91% |
+| 60/40 | 5-point band | 8.13% | 4.5% | 8.13% | 8.12% | 8.12% | 8.10% | 8.08% |
+| Equal weight | daily | 8.22% | 81.5% | 8.20% | 8.13% | 8.05% | 7.78% | 7.34% |
+| Equal weight | monthly | 7.72% | 15.8% | 7.72% | 7.71% | 7.69% | 7.64% | 7.55% |
+| Equal weight | quarterly | 7.85% | 9.3% | 7.85% | 7.84% | 7.83% | 7.80% | 7.75% |
+| Equal weight | yearly | 7.83% | 4.7% | 7.83% | 7.82% | 7.82% | 7.80% | 7.78% |
+| Equal weight | never (buy and hold) | 7.68% | 0.0% | 7.68% | 7.68% | 7.68% | 7.68% | 7.68% |
+| Equal weight | 5-point band | 8.41% | 5.1% | 8.41% | 8.41% | 8.40% | 8.39% | 8.36% |
+| Permanent | daily | 7.56% | 67.7% | 7.55% | 7.49% | 7.42% | 7.20% | 6.84% |
+| Permanent | monthly | 7.29% | 13.8% | 7.28% | 7.27% | 7.26% | 7.21% | 7.14% |
+| Permanent | quarterly | 7.35% | 8.0% | 7.35% | 7.34% | 7.33% | 7.31% | 7.26% |
+| Permanent | yearly | 7.45% | 4.2% | 7.45% | 7.44% | 7.44% | 7.43% | 7.40% |
+| Permanent | never (buy and hold) | 8.14% | 0.0% | 8.14% | 8.14% | 8.14% | 8.14% | 8.14% |
+| Permanent | 5-point band | 7.53% | 5.2% | 7.53% | 7.53% | 7.52% | 7.51% | 7.48% |
+
+The figures before costs are the scenarios' to the last digit. The
+break-even costs:
+
+| Mix | Daily's lead over monthly, before costs | Cost that ends it | 5-point band's lead over buy and hold | Cost that ends it |
+| --- | ---: | ---: | ---: | ---: |
+| Equity | 0.110 pt | 12.9 bp | 0.062 pt | above 100 bp |
+| 60/40 | 0.221 pt | 26.0 bp | -0.781 pt | no lead |
+| Equal weight | 0.500 pt | 35.2 bp | 0.730 pt | above 100 bp |
+| Permanent | 0.274 pt | 23.6 bp | -0.601 pt | no lead |
+
+What they show:
+
+- **The drag is the turnover times twice the cost.** Each unit of one-way
+  turnover is a sale and a purchase, so the costs paid a year are `2 k`
+  times the turnover, and the fall in the compound return is that times one
+  plus the return (1.07 to 1.09 times here). Rebalanced daily, a 10 bp cost
+  takes 0.105 to 0.176 points a year off the return and 50 bp 0.52 to 0.88;
+  monthly, 0.020 to 0.034 and 0.10 to 0.17; the 5-point band, 0.005 to 0.011
+  and 0.023 to 0.056.
+- **Daily rebalancing's lead over monthly survives costs below 12.9 bp
+  (equity) to 35.2 bp (equal weight).** At 10 bp it is 0.025 to 0.357 points,
+  against 0.110 to 0.500 before costs; at 25 bp only equal weight (0.144) and
+  the 60/40 (0.008) still lead; at 50 bp monthly returns more for every mix,
+  by 0.20 to 0.31 points. Equal weight rebalanced daily returns 8.22% before
+  costs and 7.34% at 50 bp, below its 7.68% left alone.
+- **The 5-point band is the best rebalancing rule from 5 bp up for every
+  mix**, and at every cost for the 60/40 and equal weight; below 5 bp, daily
+  rebalancing is best for the equity and permanent mixes. Its lead over buy
+  and hold for the equity and equal-weight mixes outlasts any one-way cost up
+  to 1%. Buy and hold returns the most for the 60/40 and the permanent mix at
+  any cost, by drifting into other portfolios (see the scenarios).
+
+It is one history, and the costs are assumed levels: what the funds cost to
+trade sets which row applies.
 
 ## Mean-variance optimisation and the efficient frontier
 
@@ -1019,7 +1126,7 @@ the bill's mean rate as in the frontier section
 | Efficient frontier and mean-variance optimiser, held out of sample | done |
 | Fama-French factor attribution (Ken French data library), ratios against the bill rate | done |
 | Risk parity and CVaR optimisation, compared out of sample | done |
-| Cost-aware backtest: transaction costs, spreads, rebalancing drag | to come |
+| Cost-aware backtest: transaction costs, spreads, rebalancing drag | done |
 | Tableau extracts, dashboard spec and Plotly reproduction | to come |
 
 ## Development

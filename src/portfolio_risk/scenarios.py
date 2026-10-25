@@ -17,7 +17,7 @@ the targets:
 
 The last close of the data is never a rebalance: no return follows it. Turnover at a
 rebalance is the one-way share of the portfolio traded, half the sum of the absolute
-changes in weight. No trading costs are charged.
+changes in weight. No trading costs are charged here; ``costs`` charges them.
 
 ``MIXES`` names a few allocations of the eight funds. ``STRESS_PERIODS`` names six
 falls of the S&P 500, each from its closing high to its closing low (SPY's closes
