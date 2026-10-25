@@ -576,10 +576,12 @@ yearly covariance (the sample covariance times 252, or Ledoit-Wolf's): the
 lowest-volatility portfolio at each expected return from the minimum-variance
 portfolio's up to the highest any portfolio has; and the **tangency**
 portfolio, with the highest ratio of expected excess return to volatility.
-Ratios are against a zero risk-free rate, as in the risk measures. With the
-sample covariance a portfolio's ratio is exactly the Sharpe ratio of its daily
-returns rebalanced every close: equal weight's is 0.642 here and in
-[`results/risk-metrics.json`](results/risk-metrics.json) alike.
+Ratios are against a zero risk-free rate, as in the risk measures, or against
+the Treasury bill (see [Against the Treasury bill](#against-the-treasury-bill)).
+With the sample covariance and a constant rate a portfolio's ratio is exactly
+the Sharpe ratio of its daily returns rebalanced every close: equal weight's is
+0.642 here and in [`results/risk-metrics.json`](results/risk-metrics.json)
+alike.
 
 Each portfolio is the exact solution of its quadratic programme, by a primal
 active-set method written in numpy. The tangency portfolio is found by
@@ -597,11 +599,14 @@ these never the lower.
 ```bash
 python -m portfolio_risk.frontier --json results/frontier.json
 python -m portfolio_risk.frontier --max-weight 0.3 --json results/frontier-cap30.json
+python -m portfolio_risk.frontier --risk-free bills --json results/frontier-bills.json
+python -m portfolio_risk.frontier --risk-free bills --max-weight 0.3 --json results/frontier-cap30-bills.json
 ```
 
 `--max-weight` caps every fund, `--covariance ledoit-wolf` shrinks the
-covariance, `--risk-free` sets the rate (compound, a year) and `--points` the
-portfolios along the frontier (21).
+covariance, `--risk-free` sets the rate (compound, a year, or `bills` for the
+daily one-month bill from the factor cache) and `--points` the portfolios
+along the frontier (21).
 
 **Out of sample.** Portfolios fitted to the whole history and judged on it
 look better than they are. So the command also chooses the minimum-variance
@@ -676,10 +681,63 @@ What they show:
   split, 93.4% to 95.0% after).
 
 The held periods overlap (every one includes 2022 to 2026), so the five splits
-are five views of one history, not five independent trials. The ratios take a
-zero risk-free rate, which flatters every portfolio and the least volatile
-most (against the measured bill rate, AGG's Sharpe ratio falls by more than
-half; see the risk measures). Nothing here charges trading costs.
+are five views of one history, not five independent trials. The ratios above
+take a zero risk-free rate, which flatters every portfolio and the least
+volatile most; the next section measures them against the bill. Nothing here
+charges trading costs.
+
+### Against the Treasury bill
+
+With `--risk-free bills` the realised ratios subtract the one-month bill day
+by day, as the risk measures do, over the days the factor cache covers: 4
+January 2005 to 31 August 2026 (5,448 days), a month shorter than above. The
+tangency portfolio and the expected ratios need one constant rate, so they
+take the bill's mean over the returns the portfolios are chosen from: 1.74% a
+year over the whole history; 2.82%, 1.78%, 1.29%, 1.21% and 1.15% up to the
+five splits; 1.42% to 3.93% after them. On the whole history that constant
+rate gives the minimum-variance, tangency and equal-weight portfolios expected
+ratios within 0.00013 of their Sharpe ratios against the bill day by day
+(0.42767 against 0.42766, 0.80407 against 0.80419, 0.53165 against 0.53167).
+
+The whole history
+([`results/frontier-bills.json`](results/frontier-bills.json),
+[`results/frontier-cap30-bills.json`](results/frontier-cap30-bills.json)), in
+sample:
+
+| Portfolio | Cap | Expected | Volatility | Sharpe | Sharpe against zero (above) | Weights |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Minimum variance | none | 3.87% | 5.01% | 0.428 | 0.744 | AGG 91.4%, SPY 6.9%, GLD 1.7% |
+| Tangency | none | 10.25% | 10.60% | 0.804 | 0.988 | SPY 41.6%, GLD 35.2%, TLT 23.2% |
+| Minimum variance | 30% | 6.98% | 7.48% | 0.702 | 0.907 | TLT 30.0%, AGG 30.0%, SPY 25.9%, GLD 14.1% |
+| Tangency | 30% | 8.63% | 8.70% | 0.794 | 0.976 | SPY 30.0%, GLD 30.0%, AGG 27.1%, TLT 12.9% |
+| Equal weight | - | 9.08% | 13.83% | 0.532 | 0.642 | 12.5% each |
+
+The minimum-variance portfolio does not depend on the rate; its ratio falls
+the most, by 42.5%, against 17.1% for equal weight. The tangency portfolio
+chosen at the bill holds no AGG (55.2% at a zero rate).
+
+Chosen up to each split and held after it, the Sharpe ratio expected, then
+realised, against the bill:
+
+| Chosen up to | Minimum variance | Tangency | Minimum variance, 30% cap | Tangency, 30% cap | Equal weight |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2009-12-31 | 0.48 → 0.45 | 0.94 → 0.50 | 0.60 → 0.73 | 0.93 → 0.48 | 0.38 → 0.63 |
+| 2012-12-31 | 0.80 → 0.22 | 1.13 → 0.27 | 0.97 → 0.55 | 1.12 → 0.28 | 0.52 → 0.56 |
+| 2015-12-31 | 0.72 → 0.18 | 0.87 → 0.44 | 0.86 → 0.57 | 0.86 → 0.54 | 0.49 → 0.60 |
+| 2018-12-31 | 0.70 → 0.09 | 0.85 → 0.50 | 0.85 → 0.53 | 0.85 → 0.54 | 0.49 → 0.61 |
+| 2021-12-31 | 0.74 → -0.40 | 0.98 → 0.05 | 0.97 → 0.01 | 0.98 → 0.05 | 0.59 → 0.29 |
+
+- **19 of 20 optimised portfolios fell short of the ratio they expected.** The
+  exception, the capped minimum-variance portfolio after 2009 (0.60 → 0.73),
+  was chosen while the bill averaged 2.82% and held while it averaged 1.42%.
+- **Equal weight realised a higher ratio than the uncapped minimum-variance
+  and tangency portfolios after every split** (0.29 to 0.63, against -0.40 to
+  0.45 and 0.05 to 0.50), as against a zero rate.
+- **The cap's advantage mostly goes.** The capped minimum-variance portfolio
+  beat equal weight only after 2009 (0.73 against 0.63; against a zero rate
+  after 2009, 2012 and 2015), and the capped tangency portfolio after none.
+- **The tangency portfolios hold less AGG**: 28.4% to 47.0% chosen before a
+  split, against 50.5% to 61.8% at a zero rate.
 
 ## Factor attribution
 
@@ -825,6 +883,7 @@ two agree to 4e-18.
 
 ```bash
 python -m portfolio_risk.construction --json results/construction.json
+python -m portfolio_risk.construction --risk-free bills --json results/construction-bills.json
 ```
 
 The command compares six portfolios: equal weight, inverse volatility, risk
@@ -832,7 +891,8 @@ parity, and the frontier's minimum-variance and tangency portfolios beside
 minimum CVaR, each chosen from the whole history and from the returns up to
 each of the frontier's five split dates, then held after it, rebalanced every
 close. The covariance is the sample one and Sharpe ratios are against a zero
-rate, as in the frontier section.
+rate, or with `--risk-free bills` against the bill, as in the frontier
+section.
 
 ### Results
 
@@ -908,13 +968,44 @@ What they show:
   as the frontier section found for its three: the low-risk portfolios held
   mostly AGG, which returned 2.32% a year after 2009 and -0.64% after 2021.
 
-**The ratios are against a zero rate, which flatters the low-risk
-portfolios most.** This command, like the frontier's, takes only a constant
-rate so far. Against the daily bill, AGG's own Sharpe ratio falls from 0.57
-to 0.26 and equal weight's from 0.64 to 0.53 (see the risk measures), so the
-AGG-heavy portfolios here, minimum variance and minimum CVaR, can be expected
-to lose the most; that is not yet measured here. The held periods overlap, so the five splits are five views of one
-history, and nothing here charges trading costs.
+The held periods overlap, so the five splits are five views of one history,
+and nothing here charges trading costs.
+
+**Against the Treasury bill**, over the days the factor cache covers (to 31
+August 2026, a month shorter than above), the tangency portfolio chosen at
+the bill's mean rate as in the frontier section
+([`results/construction-bills.json`](results/construction-bills.json)):
+
+| Portfolio | Sharpe | Sharpe against zero (above) | Change |
+| --- | ---: | ---: | ---: |
+| Equal weight | 0.53 | 0.64 | -17.1% |
+| Inverse volatility | 0.59 | 0.75 | -21.8% |
+| Risk parity | 0.61 | 0.80 | -23.1% |
+| Minimum variance | 0.43 | 0.74 | -42.5% |
+| Tangency | 0.80 | 0.99 | -18.6% |
+| Minimum CVaR | 0.44 | 0.75 | -41.6% |
+
+| Sharpe ratio held after, against the bill | Equal weight | Inverse volatility | Risk parity | Minimum variance | Tangency | Minimum CVaR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2009 | 0.63 | 0.67 | 0.59 | 0.45 | 0.50 | 0.54 |
+| 2012 | 0.56 | 0.52 | 0.40 | 0.22 | 0.27 | 0.33 |
+| 2015 | 0.60 | 0.54 | 0.43 | 0.18 | 0.44 | 0.23 |
+| 2018 | 0.61 | 0.52 | 0.41 | 0.09 | 0.50 | 0.13 |
+| 2021 | 0.29 | 0.11 | -0.05 | -0.40 | 0.05 | -0.43 |
+
+- **The AGG-heavy portfolios lose the most.** In sample, minimum variance's
+  and minimum CVaR's ratios fall by 42.5% and 41.6%, the others' by 17.1% to
+  23.1% (the tangency portfolio's is that of a different portfolio, chosen at
+  the bill). Risk parity's 0.61 is still above equal weight's 0.53.
+- **Held after a split, equal weight comes first more often.** It had the
+  highest ratio of the six after 2012, 2015, 2018 and 2021, and inverse
+  volatility after 2009 only (against a zero rate, inverse volatility after
+  2009, 2012 and 2015). Inverse volatility still beat risk parity after every
+  split, and risk parity beat equal weight after none.
+- **Minimum CVaR against minimum variance is unchanged:** a higher held ratio
+  after four of the five splits, not after 2021 (-0.43 against -0.40).
+- After 2021, when the bill averaged 3.93% a year, risk parity, minimum
+  variance and minimum CVaR had mean returns below the bill's.
 
 ## Parts
 
