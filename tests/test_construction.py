@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from portfolio_risk import construction
+from portfolio_risk import construction, french
 from portfolio_risk import frontier as fr
 from portfolio_risk.construction import (
     PORTFOLIOS,
@@ -356,3 +356,105 @@ def test_risk_parity_converges_where_the_last_step_is_below_rounding() -> None:
                 covariance = random_covariance(n, seed) * scale
                 w = risk_parity(covariance)
                 np.testing.assert_allclose(risk_contributions(w, covariance), 1 / n, rtol=1e-11)
+
+
+def factor_cache(tmp_path: Path, end="2024-11-29") -> Path:
+    """A factor cache over the price days up to ``end``, the bill rate rising each month."""
+    days = pd.bdate_range("2023-01-02", end)
+    table = pd.DataFrame({"date": days.date})
+    for column in ("mkt_rf", "smb", "hml", "rf", "smb5", "rmw", "cma"):
+        table[column] = 0.01
+    table["rf_month"] = np.round(0.2 + 0.03 * (days.month + 12 * (days.year - 2023)), 2)
+    path = tmp_path / "factors.csv"
+    french.write_cache(table, path, start=date(2023, 1, 1), end=date(2024, 12, 31), vintages={})
+    return path
+
+
+def test_the_command_measures_against_the_bill_over_the_days_it_covers(
+    tmp_path: Path, capsys
+) -> None:
+    path = cache(tmp_path)
+    factors = factor_cache(tmp_path)
+    out = tmp_path / "bills.json"
+    argv = ["--cache", str(path), "--factors", str(factors), "--json", str(out)]
+    assert main([*argv, "--risk-free", "bills", "--split", "2023-03-31"]) == 0
+    printed = capsys.readouterr().out
+    assert "499 daily returns, 2023-01-03 to 2024-11-29; risk-free rate one-month " in printed
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["risk_free"] == "one-month Treasury bill"
+    assert written["factors_sha256"] == french.read_manifest(factors)["sha256"]
+    rate = french.daily_risk_free(french.load_factors(factors)).loc["2023-01-03":]
+    daily = total_returns(load_cache(path)).loc[: rate.index[-1]]
+    years = (rate.index[-1] - pd.Timestamp("2023-01-02")).days / 365.25
+    assert written["risk_free_compound"] == pytest.approx(
+        (1 + rate).prod() ** (1 / years) - 1, rel=1e-9
+    )
+    assert written["constant_rate"] == pytest.approx((1 + rate.mean()) ** 252 - 1, rel=1e-12)
+    expected, covariance = fr.estimates(daily)
+    tangency = fr.max_sharpe(expected, covariance, written["constant_rate"])
+    np.testing.assert_allclose(
+        pd.Series(written["portfolios"]["max_sharpe"]["weights"]), tangency, atol=1e-12
+    )
+    # In sample, every Sharpe ratio is against the bill day by day.
+    for name, p in written["portfolios"].items():
+        history = portfolio(daily, pd.Series(p["weights"]))
+        assert p["in_sample"]["sharpe_ratio"] == pytest.approx(
+            sharpe_ratio(history, 252, rate), rel=1e-12
+        ), name
+    split = written["splits"][0]
+    before, after = daily.loc[:"2023-03-31"], daily.loc["2023-04-01":]
+    rate_before = (1 + rate.loc[before.index].mean()) ** 252 - 1
+    assert split["constant_rate"] == pytest.approx(rate_before, rel=1e-12)
+    early = fr.estimates(before)
+    held = fr.max_sharpe(*early, rate_before)
+    entry = split["portfolios"]["max_sharpe"]
+    np.testing.assert_allclose(pd.Series(entry["weights"]), held, atol=1e-12)
+    assert not np.allclose(held, fr.max_sharpe(*early), atol=1e-3)
+    assert not np.allclose(held, fr.max_sharpe(*early, written["constant_rate"]), atol=1e-3)
+    history = portfolio(after, held)
+    assert entry["held"]["sharpe_ratio"] == pytest.approx(
+        sharpe_ratio(history, 252, rate.loc[after.index]), rel=1e-12
+    )
+    assert entry["in_sample"]["sharpe_ratio"] == pytest.approx(
+        sharpe_ratio(portfolio(before, held), 252, rate.loc[before.index]), rel=1e-12
+    )
+    # The whole history's tangency portfolio, over that quarter alone.
+    quarter = prices()
+    quarter = quarter[quarter["date"] <= date(2023, 3, 31)]
+    result = construction.run(quarter, rate, splits=())
+    np.testing.assert_allclose(
+        pd.Series(result["portfolios"]["max_sharpe"]["weights"]), held, atol=1e-12
+    )
+    assert result["constant_rate"] == pytest.approx(rate_before, rel=1e-12)
+
+
+def test_a_constant_rate_adds_nothing_to_the_output(tmp_path: Path) -> None:
+    out = tmp_path / "zero.json"
+    argv = ["--cache", str(cache(tmp_path)), "--json", str(out), "--split", "2023-12-29"]
+    assert main(argv) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["risk_free"] == 0.0 and written["last_return"] == "2024-12-31"
+    for key in ("risk_free_compound", "constant_rate", "factors_sha256"):
+        assert key not in written
+    assert "constant_rate" not in written["splits"][0]
+
+
+def test_bills_the_cache_lacks_or_that_miss_a_day_are_refused_plainly(
+    tmp_path: Path, capsys
+) -> None:
+    path = cache(tmp_path)
+    argv = ["--cache", str(path), "--split", "none", "--risk-free", "bills"]
+    assert main([*argv, "--factors", str(tmp_path / "none.csv")]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "" and "none.manifest.json is missing" in captured.err
+    factors = factor_cache(tmp_path)
+    table = pd.read_csv(factors, dtype={"date": str})
+    table = table[table["date"] != "2023-06-14"]
+    table["date"] = [date.fromisoformat(d) for d in table["date"]]
+    french.write_cache(table, factors, start=date(2023, 1, 1), end=date(2024, 12, 31), vintages={})
+    assert main([*argv, "--factors", str(factors)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "" and "2023-06-14 is in the returns only" in captured.err
+    with pytest.raises(SystemExit):
+        main([*argv[:-1], "Bills"])
+    assert "a compound annual rate such as 0.02, or bills, not 'Bills'" in capsys.readouterr().err

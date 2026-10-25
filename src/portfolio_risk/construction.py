@@ -33,7 +33,10 @@ daily total returns: equal weights, inverse volatility, risk parity, the minimum
 variance and tangency portfolios of the frontier, and minimum CVaR. Each is chosen
 from the whole history, and from the returns up to each of a few split dates and then
 held after it, rebalanced every close: what it was in the data it was chosen from, and
-what it did after.
+what it did after. With ``--risk-free bills`` the Sharpe ratios are against the daily
+Treasury bill rate, over the days the factor cache covers, and the tangency portfolio
+is chosen at the bill's mean rate over the returns it is chosen from (see
+``frontier.constant_rate``).
 """
 
 from __future__ import annotations
@@ -50,10 +53,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from portfolio_risk import frontier, risk
+from portfolio_risk import french, frontier, risk
 from portfolio_risk import returns as ret
 from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
 from portfolio_risk.montecarlo import historical_portfolio_returns
+from portfolio_risk.risk import BILLS, Rate
 
 # Newton's method stops when every contribution is within this of its budget; it
 # gets there in a handful of steps, the function being smooth and strictly convex.
@@ -219,22 +223,24 @@ PORTFOLIOS = (
 
 
 def choose(
-    daily: pd.DataFrame, risk_free: float = 0.0, max_weight: float = 1.0, level: float = 0.95
+    daily: pd.DataFrame, risk_free: Rate = 0.0, max_weight: float = 1.0, level: float = 0.95
 ) -> dict[str, pd.Series]:
     """The six portfolios from ``daily`` returns, in the order of ``PORTFOLIOS``.
 
     The covariance is the sample one, as the frontier's default; the cap applies to the
     three optimised portfolios (minimum variance, tangency, minimum CVaR), the others
-    being what their rules give.
+    being what their rules give. For daily rates the tangency portfolio takes their
+    constant rate over ``daily``'s days (``frontier.constant_rate``).
     """
     expected, covariance = frontier.estimates(daily)
     n = daily.shape[1]
+    rate = frontier.constant_rate(risk_free, daily.index)
     return {
         "equal": pd.Series(1.0 / n, index=daily.columns, name="weight"),
         "inverse_volatility": inverse_volatility(covariance),
         "risk_parity": risk_parity(covariance),
         "minimum_variance": frontier.minimum_variance(covariance, max_weight),
-        "max_sharpe": frontier.max_sharpe(expected, covariance, risk_free, max_weight),
+        "max_sharpe": frontier.max_sharpe(expected, covariance, rate, max_weight),
         "minimum_cvar": minimum_cvar(daily, level, max_weight)[0],
     }
 
@@ -243,13 +249,14 @@ def describe(
     daily: pd.DataFrame,
     w: pd.Series,
     first_close: pd.Timestamp,
-    risk_free: float = 0.0,
+    risk_free: Rate = 0.0,
     level: float = 0.95,
 ) -> dict[str, Any]:
     """A portfolio rebalanced every close over ``daily``: its returns, risk and tail.
 
     Contributions are each fund's share of the variance of the portfolio's daily
-    returns there; CVaR and value at risk are of one day's return, historical.
+    returns there; CVaR and value at risk are of one day's return, historical. Daily
+    rates are subtracted day by day in the Sharpe ratio.
     """
     history = historical_portfolio_returns(daily, w.to_dict())
     per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *daily.index]))
@@ -258,7 +265,9 @@ def describe(
     return {
         "mean": float(ret.annualised_mean(history, days)),
         "volatility": float(ret.annualised_volatility(history, days)),
-        "sharpe_ratio": risk.or_none(risk.sharpe_ratio, history, days, risk_free),
+        "sharpe_ratio": risk.or_none(
+            risk.sharpe_ratio, history, days, frontier.rates_on(risk_free, daily.index)
+        ),
         "compound_return": float(ret.annualised_return(history, per_year)),
         "max_drawdown": risk.max_drawdown(history).depth,
         "value_at_risk": risk.value_at_risk(history, level),
@@ -286,17 +295,22 @@ def _held_out(
     daily: pd.DataFrame,
     split: date,
     first_close: pd.Timestamp,
-    risk_free: float,
+    risk_free: Rate,
     max_weight: float,
     level: float,
 ) -> dict[str, Any]:
     """The six portfolios chosen from the returns up to ``split`` and held after it."""
     before, after = _sides(daily, split)
     chosen = choose(before, risk_free, max_weight, level)
-    return {
+    out: dict[str, Any] = {
         "date": split.isoformat(),
         "estimated_on": frontier._span(before),
         "held_on": frontier._span(after),
+    }
+    if isinstance(risk_free, pd.Series):
+        # The rate the tangency portfolio was chosen at.
+        out["constant_rate"] = frontier.constant_rate(risk_free, before.index)
+    return out | {
         "portfolios": {
             name: {
                 "weights": {str(t): float(v) for t, v in w.items()},
@@ -310,7 +324,7 @@ def _held_out(
 
 def run(
     prices: pd.DataFrame,
-    risk_free: float = 0.0,
+    risk_free: Rate = 0.0,
     max_weight: float = 1.0,
     level: float = 0.95,
     splits: Sequence[date] = frontier.DEFAULT_SPLITS,
@@ -318,19 +332,24 @@ def run(
     """The six portfolios from the whole history, and chosen up to each split and held after.
 
     Compound returns in sample run from the first close; held after a split, from the
-    split's last close.
+    split's last close. A ``risk_free`` Series holds daily rates; the returns are then
+    those of the days both cover.
     """
     if len(set(splits)) != len(splits):
         raise ValueError("a split date is given twice")
-    daily = ret.total_returns(prices)
+    daily, risk_free = frontier.on_common_days(ret.total_returns(prices), risk_free)
     first_close = wide(prices, "close").dropna().index[0]
     held_out = [
         _held_out(daily, split, first_close, risk_free, max_weight, level) for split in splits
     ]
     chosen = choose(daily, risk_free, max_weight, level)
+    bills = frontier.bill_rate(risk_free, prices, daily)
+    if bills:
+        bills["constant_rate"] = frontier.constant_rate(risk_free, daily.index)
     return {
         **frontier._span(daily),
         "risk_free": risk_free,
+        **bills,
         "max_weight": max_weight,
         "level": level,
         "portfolios": {
@@ -367,7 +386,7 @@ def _print(result: dict[str, Any]) -> None:
     cap = "" if result["max_weight"] == 1.0 else f", at most {result['max_weight']:.0%} a fund"
     print(
         f"{result['daily_returns']} daily returns, {result['first_return']} to "
-        f"{result['last_return']}; risk-free rate {result['risk_free']:.2%} a year; one day's "
+        f"{result['last_return']}; risk-free rate {frontier.rate_text(result)}; one day's "
         f"value at risk and CVaR at {result['level']:.0%}; long only{cap}"
     )
     print("top risk: the largest share of the portfolio's variance any one fund contributes\n")
@@ -394,10 +413,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--risk-free",
-        type=float,
+        type=risk._risk_free_argument,
         default=0.0,
         help="compound annual risk-free rate, for the tangency portfolio and the Sharpe "
-        "ratios (default 0)",
+        f'ratios (default 0), or "{BILLS}" for the daily one-month Treasury bill rate from '
+        "the factor cache",
+    )
+    parser.add_argument(
+        "--factors",
+        type=Path,
+        default=french.DEFAULT_CACHE,
+        help=f"the factor cache, for --risk-free {BILLS}",
     )
     parser.add_argument(
         "--level", type=float, default=0.95, help="CVaR confidence level (default 0.95)"
@@ -414,10 +440,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         splits = frontier._splits(args.split)
         prices = load_cache(args.cache)
-        result = {
-            "cache_sha256": read_manifest(args.cache)["sha256"],
-            **run(prices, args.risk_free, args.max_weight, args.level, splits),
-        }
+        result = {"cache_sha256": read_manifest(args.cache)["sha256"]}
+        risk_free = frontier.load_risk_free(args.risk_free, args.factors, result)
+        result |= run(prices, risk_free, args.max_weight, args.level, splits)
         # Written before anything is printed, so a failure leaves no half-finished run.
         if args.json:
             args.json.parent.mkdir(parents=True, exist_ok=True)
