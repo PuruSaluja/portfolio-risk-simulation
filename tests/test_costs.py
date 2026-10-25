@@ -1,10 +1,16 @@
+import json
+from datetime import date
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from portfolio_risk import costs
+from portfolio_risk.costs import main
+from portfolio_risk.data import COLUMNS, load_cache, write_cache
 from portfolio_risk.montecarlo import check_weights
-from portfolio_risk.returns import annualised_return
+from portfolio_risk.returns import annualised_return, observed_periods_per_year, total_returns
 from portfolio_risk.scenarios import backtest
 
 
@@ -218,3 +224,126 @@ def test_bad_arguments_are_refused() -> None:
         costs.trades(test, returns.set_axis(returns.index + pd.offsets.BDay(1)))
     with pytest.raises(ValueError, match="those the backtest was run on"):
         costs.trades(test, returns[["F2", "F1", "F0"]])
+
+
+def prices() -> pd.DataFrame:
+    days = pd.bdate_range("2023-01-02", "2024-12-31")
+    rng = np.random.default_rng(0)
+    rows = []
+    for i, ticker in enumerate(["AAA", "BBB"]):
+        close = 50.0 * np.cumprod(1 + rng.normal(0.0003, 0.01 * (1 + i), len(days)))
+        for day, value in zip(days, close, strict=True):
+            rows.append((day.date(), ticker, float(value), 0.0, 0.0, 0.0, 1e6))
+    return pd.DataFrame(rows, columns=list(COLUMNS))
+
+
+def cache(tmp_path: Path) -> Path:
+    path = tmp_path / "prices.csv"
+    write_cache(prices(), path, start=date(2023, 1, 1), end=date(2024, 12, 31), source="t")
+    return path
+
+
+def test_the_command_writes_every_mix_rule_and_cost_and_the_break_even_costs(
+    tmp_path: Path, capsys
+) -> None:
+    out = tmp_path / "results" / "costs.json"
+    path = cache(tmp_path)
+    argv = ["--cache", str(path), "--json", str(out), "--mix", "AAA=0.7,BBB=0.3"]
+    argv += ["--mix", "equal", "--rule", "daily", "--rule", "never", "--rule", "band:0.02"]
+    argv += ["--cost", "0", "--cost", "0.001", "--spread", "AAA=0.002", "--compare", "daily,never"]
+    assert main(argv) == 0
+    printed = capsys.readouterr().out
+    assert "plus half of each fund's spread: AAA 20 bp" in printed
+    assert "daily over never: lead before costs, and the cost that ends it" in printed
+    assert b"\r" not in out.read_bytes()
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["costs"] == [0.0, 0.001] and written["spreads"] == {"AAA": 0.002, "BBB": 0.0}
+    assert written["rules"] == ["daily", "never", "band:0.02"]
+    daily = total_returns(load_cache(path))
+    per_year = observed_periods_per_year(pd.DatetimeIndex(["2023-01-02", *daily.index]))
+    weights = {"AAA": 0.7, "BBB": 0.3}
+    for rule in written["rules"]:
+        test = backtest(daily, weights, rule)
+        made = costs.trades(test, daily)
+        entry = written["history"]["AAA=0.7,BBB=0.3"][rule]
+        assert entry["rebalances"] == test.rebalances
+        assert entry["compound_return"] == pytest.approx(
+            annualised_return(test.returns, per_year), rel=1e-12
+        )
+        for level, figures in zip([0.0, 0.001], entry["costs"], strict=True):
+            expected = costs.summarise(made, np.array([level + 0.001, level]), per_year)
+            assert figures["cost"] == level
+            for key in ("net_compound_return", "drag", "paid_per_year"):
+                assert figures[key] == pytest.approx(expected[key], rel=1e-12, abs=1e-18)
+    never = written["history"]["equal"]["never"]["costs"][1]
+    assert never["drag"] == 0.0 and never["paid_per_year"] == 0.0
+    daily_ = written["history"]["equal"]["daily"]["costs"]
+    assert daily_[1]["drag"] > daily_[0]["drag"] > 0.0
+    [found] = written["breakeven"]
+    assert found["rules"] == ["daily", "never"]
+    for spec, w in [("AAA=0.7,BBB=0.3", weights), ("equal", {"AAA": 0.5, "BBB": 0.5})]:
+        # Break-even costs are the same for every fund and leave the spreads out.
+        expected = costs.breakeven(daily, w, ["daily", "never"], per_year)
+        assert found["mixes"][spec] == {k: v for k, v in expected.items() if k != "rules"}
+
+
+def test_the_defaults_are_every_mix_rule_and_cost(tmp_path: Path, capsys) -> None:
+    out = tmp_path / "costs.json"
+    # The default mixes name funds this cache lacks.
+    assert main(["--cache", str(cache(tmp_path)), "--json", str(out)]) == 1
+    assert "no returns for" in capsys.readouterr().err
+    assert main(["--cache", str(cache(tmp_path)), "--json", str(out), "--mix", "equal"]) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["costs"] == list(costs.LEVELS)
+    assert list(written["history"]["equal"]) == [
+        "daily",
+        "monthly",
+        "quarterly",
+        "yearly",
+        "never",
+        "band:0.05",
+    ]
+    assert [b["rules"] for b in written["breakeven"]] == [
+        ["daily", "monthly"],
+        ["band:0.05", "never"],
+    ]
+    assert written["spreads"] == {"AAA": 0.0, "BBB": 0.0}
+    assert written["history"]["equal"]["daily"]["costs"][0]["drag"] == 0.0
+    # One spread for every fund: half of it is paid even at no commission.
+    argv = ["--cache", str(cache(tmp_path)), "--json", str(out), "--mix", "equal"]
+    assert main([*argv, "--spread", "0.0004", "--cost", "0"]) == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["spreads"] == {"AAA": 0.0004, "BBB": 0.0004}
+    daily = total_returns(load_cache(cache(tmp_path)))
+    made = costs.trades(backtest(daily, {"AAA": 0.5, "BBB": 0.5}, "daily"), daily)
+    per_year = observed_periods_per_year(pd.DatetimeIndex(["2023-01-02", *daily.index]))
+    assert written["history"]["equal"]["daily"]["costs"][0]["drag"] == pytest.approx(
+        costs.summarise(made, 0.0002, per_year)["drag"], rel=1e-12
+    )
+
+
+def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
+    assert main(["--cache", str(tmp_path / "prices.csv")]) == 1
+    assert "manifest.json is missing" in capsys.readouterr().err
+    path = cache(tmp_path)
+    for argv, message in [
+        (["--cost", "five"], "a cost is a number such as 0.0005"),
+        (["--cost", "0.001", "--cost", "0.001"], "a cost is given twice"),
+        (["--cost", "0.2"], "above 10%"),
+        (["--cost", "-0.001"], "not negative"),
+        (["--spread", "wide"], "a spread is a number such as 0.0002"),
+        (["--spread", "AAA=x"], "a spread is a number such as 0.0002"),
+        (["--spread", "ZZZ=0.001"], "no returns for ZZZ"),
+        (["--spread", "AAA=0.001,aaa=0.002"], "given twice"),
+        (["--compare", "daily"], "two different rules"),
+        (["--compare", "daily,Daily"], "two different rules"),
+        (["--rule", "daily", "--rule", "DAILY"], "a rule is named twice"),
+        (["--rule", "weekly"], "a rule is daily, monthly"),
+        (["--mix", "equal"], "a mix is named twice"),
+        (["--mix", "AAA=0.5,BBB=0.5"], "equal and AAA=0.5,BBB=0.5 are the same mix"),
+        (["--json", str(tmp_path)], ""),  # a folder
+    ]:
+        assert main(["--cache", str(path), "--mix", "equal", *argv]) == 1, argv
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("error: ") and message in captured.err, argv

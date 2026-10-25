@@ -27,18 +27,31 @@ is the same for every rule. Distributions are reinvested free, as in the total r
 
 ``breakeven`` gives the one-way cost, the same for every fund, at which two rules'
 compound returns after costs are equal.
+
+``python -m portfolio_risk.costs`` backtests the scenario mixes under every rule over
+the cache's daily total returns at a few one-way costs, and gives the break-even cost
+for pairs of rules. The cache holds closing prices only, so it cannot measure what the
+funds cost to trade: the costs are levels to read the results at, not estimates.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import math
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from portfolio_risk import returns as ret
+from portfolio_risk import scenarios
+from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
+from portfolio_risk.montecarlo import check_weights
 from portfolio_risk.scenarios import Backtest, backtest
 
 # The highest one-way cost per unit traded anything here accepts: 10%, far above any
@@ -197,3 +210,235 @@ def breakeven(
             high = middle
     out["cost"] = high
     return out
+
+
+# One-way costs per unit traded the command reads the backtests at: 0 to 50 basis points.
+LEVELS = (0.0, 0.0001, 0.0005, 0.001, 0.0025, 0.005)
+COMPARE = (("daily", "monthly"), ("band:0.05", "never"))
+
+
+def run(
+    prices: pd.DataFrame,
+    mixes: Sequence[str] = tuple(scenarios.MIXES),
+    rules: Sequence[str] = scenarios.RULES,
+    levels: Sequence[float] = LEVELS,
+    spreads: float | Mapping[str, float] = 0.0,
+    compare: Sequence[Sequence[str]] = COMPARE,
+) -> dict[str, Any]:
+    """Every mix under every rule at each one-way cost ``level``, and the break-even
+    cost of each pair of rules in ``compare`` for each mix.
+
+    A fund's cost at a level is the level plus half its spread in ``spreads``. The
+    break-even costs are the same for every fund and leave ``spreads`` out.
+    """
+    daily = ret.total_returns(prices)
+    tickers = [str(t) for t in daily.columns]
+    if not mixes or not rules or not levels:
+        raise ValueError("needs at least one mix, one rule and one cost")
+    if len(set(mixes)) != len(mixes):
+        raise ValueError("a mix is named twice")
+    if len({scenarios._rule_key(rule) for rule in rules}) != len(rules):
+        raise ValueError("a rule is named twice")
+    if len(set(levels)) != len(levels):
+        raise ValueError("a cost is given twice")
+    weights = {spec: scenarios._mix(spec, tickers) for spec in mixes}
+    seen: dict[tuple[float, ...], str] = {}
+    for spec, w in weights.items():
+        key = tuple(check_weights(w, tickers).tolist())
+        if key in seen:
+            raise ValueError(f"{seen[key]} and {spec} are the same mix")
+        seen[key] = spec
+    for pair in compare:
+        if len(pair) != 2 or scenarios._rule_key(pair[0]) == scenarios._rule_key(pair[1]):
+            raise ValueError(f"needs two different rules to compare, not {list(pair)!r}")
+    # Checked before the backtests, so a bad cost does not wait for them.
+    per_level = [per_unit(level, spreads, tickers) for level in levels]
+    full = spreads if isinstance(spreads, Mapping) else dict.fromkeys(tickers, spreads)
+    first_close = wide(prices, "close").dropna().index[0]
+    per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *daily.index]))
+    history: dict[str, Any] = {}
+    for spec, w in weights.items():
+        history[spec] = {}
+        for rule in rules:
+            test = backtest(daily, w, rule)
+            made = trades(test, daily)
+            summaries = [summarise(made, k, per_year) for k in per_level]
+            history[spec][rule] = {
+                "compound_return": summaries[0]["compound_return"],
+                "rebalances": test.rebalances,
+                "turnover_per_year": summaries[0]["turnover_per_year"],
+                "costs": [
+                    {
+                        "cost": level,
+                        "net_compound_return": s["net_compound_return"],
+                        "drag": s["drag"],
+                        "paid_per_year": s["paid_per_year"],
+                    }
+                    for level, s in zip(levels, summaries, strict=True)
+                ],
+            }
+    return {
+        "first_return": daily.index[0].date().isoformat(),
+        "last_return": daily.index[-1].date().isoformat(),
+        "mixes": weights,
+        "rules": list(rules),
+        "costs": list(levels),
+        "spreads": {t: float(full.get(t, 0.0)) for t in tickers},
+        "history": history,
+        "breakeven": [
+            {
+                "rules": list(pair),
+                "mixes": {
+                    spec: _without_rules(breakeven(daily, w, pair, per_year))
+                    for spec, w in weights.items()
+                },
+            }
+            for pair in compare
+        ],
+    }
+
+
+def _without_rules(found: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in found.items() if key != "rules"}
+
+
+def _bp(value: float) -> str:
+    return f"{value * 1e4:g} bp"
+
+
+def _print(result: dict[str, Any]) -> None:
+    print(f"daily total returns {result['first_return']} to {result['last_return']}")
+    if any(result["spreads"].values()):
+        print(
+            "plus half of each fund's spread: "
+            + ", ".join(f"{t} {_bp(s)}" for t, s in result["spreads"].items() if s)
+        )
+    levels = result["costs"]
+    print(
+        "compound return a year before costs, one-way turnover a year, and after a one-way "
+        "cost per unit traded of"
+    )
+    header = "".join(f" {_bp(level):>8}" for level in levels)
+    print(f"\n{'':12} {'rule':10} {'before':>8} {'turnover':>8}{header}")
+    for spec, by_rule in result["history"].items():
+        for rule, s in by_rule.items():
+            net = "".join(f" {c['net_compound_return']:>8.2%}" for c in s["costs"])
+            print(
+                f"{spec:12} {rule:10} {s['compound_return']:>8.2%} "
+                f"{s['turnover_per_year']:>8.1%}{net}"
+            )
+    for entry in result["breakeven"]:
+        first, second = entry["rules"]
+        print(f"\n{first} over {second}: lead before costs, and the cost that ends it")
+        for spec, b in entry["mixes"].items():
+            if b["cost"] is not None:
+                end = f"{b['cost'] * 1e4:.1f} bp"
+            elif b["gap"] <= 0.0:
+                end = "no lead"
+            else:
+                end = f"above {_bp(b['highest'])}"
+            print(f"  {spec:12} {b['gap'] * 100:>6.3f} pt  {end}")
+
+
+def _costs(texts: Sequence[str] | None) -> tuple[float, ...]:
+    if texts is None:
+        return LEVELS
+    try:
+        return tuple(float(text) for text in texts)
+    except ValueError:
+        raise ValueError(
+            f"a cost is a number such as 0.0005 (5 basis points), not {' '.join(texts)!r}"
+        ) from None
+
+
+def _spreads(text: str, tickers: Sequence[str]) -> float | dict[str, float]:
+    """One spread, ``0.0002``, or one per fund, ``SPY=0.0001,EEM=0.0006``."""
+    bad = ValueError(
+        f"a spread is a number such as 0.0002, or one per fund such as "
+        f"SPY=0.0001,EEM=0.0006, not {text!r}"
+    )
+    parts = [part.partition("=") for part in text.split(",")] if "=" in text else None
+    try:
+        if parts is None:
+            return float(text)
+        values = [(ticker.strip().upper(), float(value)) for ticker, _, value in parts]
+    except ValueError:
+        raise bad from None
+    out = dict(values)
+    if len(out) != len(values):
+        raise ValueError("a fund's spread is given twice")
+    return out
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m portfolio_risk.costs", description=__doc__.splitlines()[0]
+    )
+    parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument(
+        "--mix",
+        action="append",
+        help=f"{', '.join(scenarios.MIXES)}, or weights such as SPY=0.6,AGG=0.4; may be "
+        "given more than once (default: every named mix)",
+    )
+    parser.add_argument(
+        "--rule",
+        action="append",
+        help=f"{', '.join(scenarios.RULES[:5])} or band:<width>; may be given more than "
+        f"once (default: {', '.join(scenarios.RULES)})",
+    )
+    parser.add_argument(
+        "--cost",
+        action="append",
+        help="a one-way cost per unit traded, such as 0.0005 for 5 basis points; may be "
+        f"given more than once (default: {', '.join(f'{c:g}' for c in LEVELS)})",
+    )
+    parser.add_argument(
+        "--spread",
+        default="0",
+        help="a quoted bid-ask spread, half of it added to every cost: one for every fund, "
+        "such as 0.0002, or one per fund, such as SPY=0.0001,EEM=0.0006 (default 0)",
+    )
+    parser.add_argument(
+        "--compare",
+        action="append",
+        help="two rules, such as daily,monthly, whose break-even cost is found; may be "
+        f"given more than once (default: {' and '.join(','.join(p) for p in COMPARE)})",
+    )
+    parser.add_argument("--json", type=Path, help="also write the figures to this file")
+    args = parser.parse_args(argv)
+    try:
+        prices = load_cache(args.cache)
+        sha256 = read_manifest(args.cache)["sha256"]
+        tickers = list(dict.fromkeys(str(t) for t in prices["ticker"]))
+        compare = (
+            COMPARE
+            if args.compare is None
+            else [[rule.strip() for rule in text.split(",")] for text in args.compare]
+        )
+        result = {
+            "cache_sha256": sha256,
+            **run(
+                prices,
+                args.mix or tuple(scenarios.MIXES),
+                args.rule or scenarios.RULES,
+                _costs(args.cost),
+                _spreads(args.spread, tickers),
+                compare,
+            ),
+        }
+        # Written before anything is printed, so a failure leaves no half-finished run.
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            with open(args.json, "w", encoding="utf-8", newline="\n") as out:
+                json.dump(result, out, indent=2, allow_nan=False)
+                out.write("\n")
+    except (DataError, ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    _print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
