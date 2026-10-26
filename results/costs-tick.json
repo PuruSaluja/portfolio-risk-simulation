@@ -1,0 +1,1200 @@
+{
+  "cache_sha256": "b5c1484cb49ea2259e83ca465cdde57e0e0df2ec5d52dff4a85c6ead80538168",
+  "first_return": "2005-01-04",
+  "last_return": "2026-09-30",
+  "mixes": {
+    "equity": {
+      "SPY": 0.25,
+      "IWM": 0.25,
+      "EFA": 0.25,
+      "EEM": 0.25
+    },
+    "60/40": {
+      "SPY": 0.6,
+      "AGG": 0.4
+    },
+    "equal": {
+      "SPY": 0.125,
+      "IWM": 0.125,
+      "EFA": 0.125,
+      "EEM": 0.125,
+      "AGG": 0.125,
+      "TLT": 0.125,
+      "GLD": 0.125,
+      "VNQ": 0.125
+    },
+    "permanent": {
+      "SPY": 0.25,
+      "TLT": 0.25,
+      "GLD": 0.25,
+      "AGG": 0.25
+    }
+  },
+  "rules": [
+    "daily",
+    "monthly",
+    "quarterly",
+    "yearly",
+    "never",
+    "band:0.05"
+  ],
+  "costs": [
+    0.0,
+    0.0001,
+    0.0005,
+    0.001,
+    0.0025,
+    0.005
+  ],
+  "spreads": {
+    "rule": "half of a 0.01 tick on each day's traded close, from 2006-01-31",
+    "mean_one_way": {
+      "SPY": 2.3882626978651898e-05,
+      "IWM": 4.3873591291744725e-05,
+      "EFA": 7.365164955452484e-05,
+      "EEM": 0.00010652461657465154,
+      "AGG": 4.5098802696080876e-05,
+      "TLT": 4.4064248768852405e-05,
+      "GLD": 3.766480930740881e-05,
+      "VNQ": 6.752306496066811e-05
+    },
+    "mean_one_way_from_tick_rule": {
+      "SPY": 2.5122924975235092e-05,
+      "IWM": 4.6152081318436605e-05,
+      "EFA": 7.747660538828551e-05,
+      "EEM": 0.00011205676631020759,
+      "AGG": 4.7440921705109886e-05,
+      "TLT": 4.635264022251467e-05,
+      "GLD": 3.962085826163085e-05,
+      "VNQ": 7.102974461817539e-05
+    }
+  },
+  "history": {
+    "equity": {
+      "daily": {
+        "compound_return": 0.08571323305518376,
+        "rebalances": 5468,
+        "turnover_per_year": 0.49105090118417816,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.0856411906276037,
+            "drag": 7.204242758006296e-05,
+            "paid_per_year": 6.63571143032073e-05
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08553457492284595,
+            "drag": 0.00017865813233780559,
+            "paid_per_year": 0.0001645671534658765
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08510821690404749,
+            "drag": 0.00060501615113627,
+            "paid_per_year": 0.000557406647463254
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08457550497354942,
+            "drag": 0.0011377280816343427,
+            "paid_per_year": 0.0010484546440178014
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08297893507177702,
+            "drag": 0.0027342979834067416,
+            "paid_per_year": 0.002521592721736126
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08032318589332006,
+            "drag": 0.005390047161863698,
+            "paid_per_year": 0.004976813620932871
+          }
+        ]
+      },
+      "monthly": {
+        "compound_return": 0.08461749744582589,
+        "rebalances": 260,
+        "turnover_per_year": 0.0997147008244641,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.0846033016569271,
+            "drag": 1.4195788898788142e-05,
+            "paid_per_year": 1.3088365098615122e-05
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08458167169229917,
+            "drag": 3.5825753526716464e-05,
+            "paid_per_year": 3.303125721478572e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08449515546052139,
+            "drag": 0.0001223419853045027,
+            "paid_per_year": 0.00011280303610950738
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08438701832176558,
+            "drag": 0.00023047912406030935,
+            "paid_per_year": 0.00021251824132148878
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08406266109835953,
+            "drag": 0.0005548363474663642,
+            "paid_per_year": 0.0005116671976011769
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08352224545134315,
+            "drag": 0.0010952519944827377,
+            "paid_per_year": 0.0010102607395651821
+          }
+        ]
+      },
+      "quarterly": {
+        "compound_return": 0.0843322279267415,
+        "rebalances": 86,
+        "turnover_per_year": 0.05303892963069864,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08432457333482873,
+            "drag": 7.65459191276463e-06,
+            "paid_per_year": 7.0592819123593105e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08431307127115721,
+            "drag": 1.9156655584287585e-05,
+            "paid_per_year": 1.7666876085028772e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08426706494020486,
+            "drag": 6.516298653663766e-05,
+            "paid_per_year": 6.0096222136642145e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.0842095613516952,
+            "drag": 0.00012266657504629574,
+            "paid_per_year": 0.00011313058856139565
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.0840370777568977,
+            "drag": 0.0002951501698437997,
+            "paid_per_year": 0.00027221977882570757
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08374968773729717,
+            "drag": 0.0005825401894443277,
+            "paid_per_year": 0.0005373293668364014
+          }
+        ]
+      },
+      "yearly": {
+        "compound_return": 0.08488334187373384,
+        "rebalances": 21,
+        "turnover_per_year": 0.029254313233585176,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08487905995340878,
+            "drag": 4.281920325061028e-06,
+            "paid_per_year": 3.9468903474758895e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08487271267712614,
+            "drag": 1.0629196607700453e-05,
+            "paid_per_year": 9.797533579836095e-06
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08484732500097053,
+            "drag": 3.6016872763305896e-05,
+            "paid_per_year": 3.3198709008166654e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08481559361833807,
+            "drag": 6.774825539576645e-05,
+            "paid_per_year": 6.244703645767554e-05
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08472042084545503,
+            "drag": 0.00016292102827880628,
+            "paid_per_year": 0.00015017111386303613
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08456187054479228,
+            "drag": 0.0003214713289415583,
+            "paid_per_year": 0.0002963084799463314
+          }
+        ]
+      },
+      "never": {
+        "compound_return": 0.08481353566626273,
+        "rebalances": 0,
+        "turnover_per_year": 0.0,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08481353566626273,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08481353566626273,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08481353566626273,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08481353566626273,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08481353566626273,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08481353566626273,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          }
+        ]
+      },
+      "band:0.05": {
+        "compound_return": 0.08543369161474706,
+        "rebalances": 8,
+        "turnover_per_year": 0.021632358217292914,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.0854298876923015,
+            "drag": 3.8039224455610476e-06,
+            "paid_per_year": 3.504501436557753e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.0854251917844302,
+            "drag": 8.499830316865964e-06,
+            "paid_per_year": 7.830754446303648e-06
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.0854064088100048,
+            "drag": 2.7282804742262412e-05,
+            "paid_per_year": 2.5134832705015266e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08538293156929709,
+            "drag": 5.0760045449974034e-05,
+            "paid_per_year": 4.6762830572861915e-05
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08531250967905098,
+            "drag": 0.00012118193569608804,
+            "paid_per_year": 0.00011163284125124536
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08519517252918653,
+            "drag": 0.00023851908556053736,
+            "paid_per_year": 0.00021970302057340834
+          }
+        ]
+      }
+    },
+    "60/40": {
+      "daily": {
+        "compound_return": 0.0809018594646617,
+        "rebalances": 5468,
+        "turnover_per_year": 0.48629516889002133,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08086325927299438,
+            "drag": 3.860019166732065e-05,
+            "paid_per_year": 3.571172761127287e-05
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08075814054669336,
+            "drag": 0.00014371891796834124,
+            "paid_per_year": 0.0001329707948459936
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08033776542606101,
+            "drag": 0.0005640940386006932,
+            "paid_per_year": 0.0005220084365299458
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07981252095248252,
+            "drag": 0.0010893385121791832,
+            "paid_per_year": 0.0010083085948151113
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07823828230522818,
+            "drag": 0.0026635771594335222,
+            "paid_per_year": 0.0024672300576509113
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07561952502155353,
+            "drag": 0.005282334443108175,
+            "paid_per_year": 0.004898837539760425
+          }
+        ]
+      },
+      "monthly": {
+        "compound_return": 0.07869502586458797,
+        "rebalances": 260,
+        "turnover_per_year": 0.09287845978709303,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07868779583971623,
+            "drag": 7.230024871740515e-06,
+            "paid_per_year": 6.702584937361445e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07866775855757675,
+            "drag": 2.7267307011219488e-05,
+            "paid_per_year": 2.5278322787476744e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07858761113331529,
+            "drag": 0.00010741473127268142,
+            "paid_per_year": 9.958265403730448e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07848743068433148,
+            "drag": 0.00020759518025649515,
+            "paid_per_year": 0.0001924661761037405
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07818691482649501,
+            "drag": 0.0005081110380929649,
+            "paid_per_year": 0.0004711375158359444
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07768613969499484,
+            "drag": 0.0010088861695931317,
+            "paid_per_year": 0.0009356593283071544
+          }
+        ]
+      },
+      "quarterly": {
+        "compound_return": 0.07961629920523586,
+        "rebalances": 86,
+        "turnover_per_year": 0.06023103330277505,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07961148321433224,
+            "drag": 4.815990903614398e-06,
+            "paid_per_year": 4.46084031696668e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07959847796224945,
+            "drag": 1.782124298640997e-05,
+            "paid_per_year": 1.650708804608216e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07954645637046477,
+            "drag": 6.98428347710861e-05,
+            "paid_per_year": 6.469341597505747e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07948142806602315,
+            "drag": 0.00013487113921270555,
+            "paid_per_year": 0.00012492933633261
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07928633435690381,
+            "drag": 0.00032996484833204553,
+            "paid_per_year": 0.00030565720174902507
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07896114866161118,
+            "drag": 0.0006551505436246802,
+            "paid_per_year": 0.0006069375421940892
+          }
+        ]
+      },
+      "yearly": {
+        "compound_return": 0.08024022548849655,
+        "rebalances": 21,
+        "turnover_per_year": 0.031837340948097335,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08023765414330647,
+            "drag": 2.571345190077734e-06,
+            "paid_per_year": 2.3803417526890437e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08023077567410408,
+            "drag": 9.44981439246484e-06,
+            "paid_per_year": 8.747845955902848e-06
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.0802032600817037,
+            "drag": 3.696540679284932e-05,
+            "paid_per_year": 3.4219116049748796e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08016886172989506,
+            "drag": 7.136375860149202e-05,
+            "paid_per_year": 6.606102469544829e-05
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08006564091274425,
+            "drag": 0.00017458457575229847,
+            "paid_per_year": 0.00016160557583383653
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07989352022202906,
+            "drag": 0.00034670526646748967,
+            "paid_per_year": 0.0003209093597832075
+          }
+        ]
+      },
+      "never": {
+        "compound_return": 0.08908688332744452,
+        "rebalances": 0,
+        "turnover_per_year": 0.0,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08908688332744452,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08908688332744452,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08908688332744452,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08908688332744452,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08908688332744452,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08908688332744452,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          }
+        ]
+      },
+      "band:0.05": {
+        "compound_return": 0.0812770094296569,
+        "rebalances": 19,
+        "turnover_per_year": 0.04495035533238981,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08127322629119185,
+            "drag": 3.7831384650521827e-06,
+            "paid_per_year": 3.4987675293410994e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08126350548869075,
+            "drag": 1.3503940966150263e-05,
+            "paid_per_year": 1.2488869856811297e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08122462077395387,
+            "drag": 5.238865570303397e-05,
+            "paid_per_year": 4.8450552934787074e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08117601149309708,
+            "drag": 0.00010099793655982126,
+            "paid_per_year": 9.340552437857895e-05
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08103016103901022,
+            "drag": 0.0002468483906466895,
+            "paid_per_year": 0.00022828958191782606
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.080787001398208,
+            "drag": 0.0004900080314488992,
+            "paid_per_year": 0.00045316031709803596
+          }
+        ]
+      }
+    },
+    "equal": {
+      "daily": {
+        "compound_return": 0.08222180789762963,
+        "rebalances": 5468,
+        "turnover_per_year": 0.8151763809149424,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.0821157805329622,
+            "drag": 0.00010602736466742979,
+            "paid_per_year": 9.797668813944499e-05
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08193937204452448,
+            "drag": 0.0002824358531051535,
+            "paid_per_year": 0.00026101159567786637
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08123402549740626,
+            "drag": 0.0009877824002233748,
+            "paid_per_year": 0.0009131496085909278
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08035298842913756,
+            "drag": 0.0018688194684920723,
+            "paid_per_year": 0.0017283186696649762
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07771417510512525,
+            "drag": 0.004507632792504379,
+            "paid_per_year": 0.004173806488500833
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07333041126874228,
+            "drag": 0.008891396628887355,
+            "paid_per_year": 0.008249585761671698
+          }
+        ]
+      },
+      "monthly": {
+        "compound_return": 0.07722547000944388,
+        "rebalances": 260,
+        "turnover_per_year": 0.15795591931894631,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07720584790668712,
+            "drag": 1.9622102756758353e-05,
+            "paid_per_year": 1.821555092378142e-05
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07717181837592185,
+            "drag": 5.3651633522028286e-05,
+            "paid_per_year": 4.98064814848544e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07703571117484133,
+            "drag": 0.00018975883460255194,
+            "paid_per_year": 0.000176168946475751
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07686560173725882,
+            "drag": 0.00035986827218506545,
+            "paid_per_year": 0.0003341192064861031
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07635543608381086,
+            "drag": 0.0008700339256330208,
+            "paid_per_year": 0.0008079521621000979
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07550569099716883,
+            "drag": 0.0017197790122750467,
+            "paid_per_year": 0.0015976245182350631
+          }
+        ]
+      },
+      "quarterly": {
+        "compound_return": 0.07852812441832574,
+        "rebalances": 86,
+        "turnover_per_year": 0.09335785326994028,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07851617861562585,
+            "drag": 1.1945802699891983e-05,
+            "paid_per_year": 1.1076053213185339e-05
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07849604127530795,
+            "drag": 3.208314301779425e-05,
+            "paid_per_year": 2.9747414012106097e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.0784154955384562,
+            "drag": 0.00011262887986954184,
+            "paid_per_year": 0.00010443166886644344
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07831482135718458,
+            "drag": 0.0002133030611411596,
+            "paid_per_year": 0.00019778446665511565
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07801285124454467,
+            "drag": 0.0005152731737810695,
+            "paid_per_year": 0.0004778268262476548
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.0775097400155529,
+            "drag": 0.00101838440277284,
+            "paid_per_year": 0.0009445129334273017
+          }
+        ]
+      },
+      "yearly": {
+        "compound_return": 0.07829017562715239,
+        "rebalances": 21,
+        "turnover_per_year": 0.04673764669255335,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07828412799315385,
+            "drag": 6.047633998543245e-06,
+            "paid_per_year": 5.608524698793798e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07827404883847108,
+            "drag": 1.6126788681306015e-05,
+            "paid_per_year": 1.4955822655920768e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07823373328686947,
+            "drag": 5.6442340282916725e-05,
+            "paid_per_year": 5.234364773359394e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07818334124612791,
+            "drag": 0.00010683438102447596,
+            "paid_per_year": 9.90753562805186e-05
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07803218107913658,
+            "drag": 0.0002579945480158108,
+            "paid_per_year": 0.00023925003481516265
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07778030042330605,
+            "drag": 0.0005098752038463356,
+            "paid_per_year": 0.0004728065809796622
+          }
+        ]
+      },
+      "never": {
+        "compound_return": 0.07683432496418627,
+        "rebalances": 0,
+        "turnover_per_year": 0.0,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07683432496418627,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07683432496418627,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07683432496418627,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07683432496418627,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07683432496418627,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07683432496418627,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          }
+        ]
+      },
+      "band:0.05": {
+        "compound_return": 0.08413023666544779,
+        "rebalances": 12,
+        "turnover_per_year": 0.05071287802686914,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08412335423883587,
+            "drag": 6.882426611926062e-06,
+            "paid_per_year": 6.348316520232973e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08411235855850756,
+            "drag": 1.7878106940233396e-05,
+            "paid_per_year": 1.6490611437602328e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08406837677973253,
+            "drag": 6.185988571526246e-05,
+            "paid_per_year": 5.7058010718020616e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08401340167497173,
+            "drag": 0.0001168349904760585,
+            "paid_per_year": 0.00010776325584264818
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.083848490453374,
+            "drag": 0.00028174621207378847,
+            "paid_per_year": 0.00025985232841383706
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08357368519286301,
+            "drag": 0.0005565514725847792,
+            "paid_per_year": 0.0005132454296058442
+          }
+        ]
+      }
+    },
+    "permanent": {
+      "daily": {
+        "compound_return": 0.07562058056535272,
+        "rebalances": 5468,
+        "turnover_per_year": 0.6773207879363995,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07556579321429248,
+            "drag": 5.478735106023702e-05,
+            "paid_per_year": 5.0936860202252874e-05
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07542010238194902,
+            "drag": 0.00020047818340369894,
+            "paid_per_year": 0.0001864009900530128
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07483753494447613,
+            "drag": 0.0007830456208765824,
+            "paid_per_year": 0.0007282576314282345
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07410976600961773,
+            "drag": 0.001510814555734985,
+            "paid_per_year": 0.0014055788924804754
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07192938916339033,
+            "drag": 0.0036911914019623904,
+            "paid_per_year": 0.0034375482155651377
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.06830515958183651,
+            "drag": 0.007315420983516202,
+            "paid_per_year": 0.006824196455375974
+          }
+        ]
+      },
+      "monthly": {
+        "compound_return": 0.07287838506568613,
+        "rebalances": 260,
+        "turnover_per_year": 0.13758038539710196,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07286737192987428,
+            "drag": 1.1013135811852037e-05,
+            "paid_per_year": 1.0265082193831298e-05
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07283785128934389,
+            "drag": 4.053377634223587e-05,
+            "paid_per_year": 3.7781032866745664e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07271977718682193,
+            "drag": 0.0001586078788641948,
+            "paid_per_year": 0.00014784366993759676
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07257220357667725,
+            "drag": 0.00030618148900887765,
+            "paid_per_year": 0.0002854193568609862
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07212960927566225,
+            "drag": 0.0007487757900238728,
+            "paid_per_year": 0.0006981292332056313
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07139237135925816,
+            "drag": 0.001486013706427966,
+            "paid_per_year": 0.001385923914556145
+          }
+        ]
+      },
+      "quarterly": {
+        "compound_return": 0.0735034987579089,
+        "rebalances": 86,
+        "turnover_per_year": 0.08006026572847731,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07349714054021697,
+            "drag": 6.3582176919319e-06,
+            "paid_per_year": 5.922877055689903e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07347995185157277,
+            "drag": 2.3546906336130435e-05,
+            "paid_per_year": 2.1934791886011182e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.0734112000878276,
+            "drag": 9.229867008130055e-05,
+            "paid_per_year": 8.598136270299703e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07332526710385229,
+            "drag": 0.00017823165405661534,
+            "paid_per_year": 0.00016603713463160384
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07306751281804345,
+            "drag": 0.0004359859398654492,
+            "paid_per_year": 0.0004061882937893027
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07263807036324037,
+            "drag": 0.0008654283946685354,
+            "paid_per_year": 0.0008063871240895456
+          }
+        ]
+      },
+      "yearly": {
+        "compound_return": 0.07448824912253461,
+        "rebalances": 21,
+        "turnover_per_year": 0.042401536317742815,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07448474778345386,
+            "drag": 3.5013390807525635e-06,
+            "paid_per_year": 3.2586079302398257e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07447563591726708,
+            "drag": 1.2613205267533734e-05,
+            "paid_per_year": 1.17387742062111e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07443918967829768,
+            "drag": 4.9059444236929095e-05,
+            "paid_per_year": 4.56580243845315e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07439363463255465,
+            "drag": 9.461448997996613e-05,
+            "paid_per_year": 8.805390809351377e-05
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07425698776796943,
+            "drag": 0.00023126135456517927,
+            "paid_per_year": 0.00021522043886180352
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07402930339966184,
+            "drag": 0.0004589457228727778,
+            "paid_per_year": 0.00042709471189756535
+          }
+        ]
+      },
+      "never": {
+        "compound_return": 0.08135419058422659,
+        "rebalances": 0,
+        "turnover_per_year": 0.0,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.08135419058422659,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.08135419058422659,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.08135419058422659,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.08135419058422659,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.08135419058422659,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.08135419058422659,
+            "drag": 0.0,
+            "paid_per_year": 0.0
+          }
+        ]
+      },
+      "band:0.05": {
+        "compound_return": 0.07534674476872702,
+        "rebalances": 20,
+        "turnover_per_year": 0.05208897568071325,
+        "costs": [
+          {
+            "cost": 0.0,
+            "net_compound_return": 0.07534227019599513,
+            "drag": 4.474572731894e-06,
+            "paid_per_year": 4.16104958763553e-06
+          },
+          {
+            "cost": 0.0001,
+            "net_compound_return": 0.07533106768175658,
+            "drag": 1.567708697043646e-05,
+            "paid_per_year": 1.4578622952804067e-05
+          },
+          {
+            "cost": 0.0005,
+            "net_compound_return": 0.07528625942781461,
+            "drag": 6.0485340912408425e-05,
+            "paid_per_year": 5.62471266123161e-05
+          },
+          {
+            "cost": 0.001,
+            "net_compound_return": 0.07523025316135049,
+            "drag": 0.0001164916073765343,
+            "paid_per_year": 0.00010832873449531053
+          },
+          {
+            "cost": 0.0025,
+            "net_compound_return": 0.07506226127539709,
+            "drag": 0.0002844834933299345,
+            "paid_per_year": 0.0002645468326086847
+          },
+          {
+            "cost": 0.005,
+            "net_compound_return": 0.07478236392950656,
+            "drag": 0.0005643808392204602,
+            "paid_per_year": 0.0005248217797334676
+          }
+        ]
+      }
+    }
+  },
+  "breakeven": [
+    {
+      "rules": [
+        "daily",
+        "monthly"
+      ],
+      "mixes": {
+        "equity": {
+          "gap": 0.0010957356093578702,
+          "highest": 0.01,
+          "cost": 0.0012901266952656254
+        },
+        "60/40": {
+          "gap": 0.002206833600073732,
+          "highest": 0.01,
+          "cost": 0.0025974152653690536
+        },
+        "equal": {
+          "gap": 0.004996337888185751,
+          "highest": 0.01,
+          "cost": 0.003520433972271864
+        },
+        "permanent": {
+          "gap": 0.0027421954996665887,
+          "highest": 0.01,
+          "cost": 0.002364668281457538
+        }
+      }
+    },
+    {
+      "rules": [
+        "daily",
+        "band:0.05"
+      ],
+      "mixes": {
+        "equity": {
+          "gap": 0.00027954144043669527,
+          "highest": 0.01,
+          "cost": 0.0002742815219225481
+        },
+        "60/40": {
+          "gap": -0.00037514996499520004,
+          "highest": 0.01,
+          "cost": null
+        },
+        "equal": {
+          "gap": -0.00190842876781816,
+          "highest": 0.01,
+          "cost": null
+        },
+        "permanent": {
+          "gap": 0.000273835796625696,
+          "highest": 0.01,
+          "cost": 0.00020361730410178858
+        }
+      }
+    },
+    {
+      "rules": [
+        "band:0.05",
+        "never"
+      ],
+      "mixes": {
+        "equity": {
+          "gap": 0.00062015594848433,
+          "highest": 0.01,
+          "cost": null
+        },
+        "60/40": {
+          "gap": -0.007809873897787617,
+          "highest": 0.01,
+          "cost": null
+        },
+        "equal": {
+          "gap": 0.007295911701261523,
+          "highest": 0.01,
+          "cost": null
+        },
+        "permanent": {
+          "gap": -0.006007445815499571,
+          "highest": 0.01,
+          "cost": null
+        }
+      }
+    }
+  ]
+}

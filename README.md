@@ -587,9 +587,10 @@ purchase at the first close is not charged (every rule makes it), nor are
 reinvested distributions; costs are proportional, with no fixed fees, market
 impact or taxes.
 
-**The costs are levels, not measurements.** The price cache holds daily
-closes only, with no bid, ask, high or low, so it cannot say what these funds
-cost to trade. The command reads every backtest at one-way costs of 0, 1, 5,
+**The costs are levels, not measurements**, with one exception, a floor (see
+[At the narrowest quote](#at-the-narrowest-quote)). The price cache holds
+daily closes only, with no bid or ask, so it cannot say what these funds cost
+to trade. The command reads every backtest at one-way costs of 0, 1, 5,
 10, 25 and 50 basis points per unit traded, and finds the **break-even cost**,
 the same for every fund, at which one rule's lead over another is gone: the
 lowest such cost. The leading rule's return can fall only so fast as the cost
@@ -684,6 +685,52 @@ What they show:
 
 It is one history, and the costs are assumed levels: what the funds cost to
 trade sets which row applies.
+
+### At the narrowest quote
+
+One cost can be measured from closing prices: the least that crossing the
+quote can cost. Since 31 January 2006, Rule 612 of Regulation NMS has set a
+minimum quoting increment of one cent for stocks priced at $1 or more, these
+funds among them, so a quote is at least a cent wide and an order that
+crosses it pays at least half a cent a share. (A half-cent increment for the
+most tightly quoted stocks, adopted in 2024, had its compliance date
+postponed to November 2026 and then to November 2027, after the end of the
+data.) `--spread tick` charges each trade half a cent over each fund's close
+that day, and nothing before the rule. The closes are put back on the basis
+they traded on before a split: EEM traded near $131 before its 3-for-1 split
+in July 2008, not at the cache's split-adjusted $44, and a cent is a third
+as large a share of that.
+
+```bash
+python -m portfolio_risk.costs --spread tick --json results/costs-tick.json
+```
+
+The floor, one way, averaged over the days since the rule
+([`results/costs-tick.json`](results/costs-tick.json)):
+
+| Fund | SPY | IWM | EFA | EEM | AGG | TLT | GLD | VNQ |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Floor | 0.25 bp | 0.46 bp | 0.77 bp | 1.12 bp | 0.47 bp | 0.46 bp | 0.40 bp | 0.71 bp |
+
+and what it takes off each rule's compound return, in points a year:
+
+| Mix | Daily | Monthly | Quarterly | Yearly | 5-point band |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Equity | 0.0072 | 0.0014 | 0.0008 | 0.0004 | 0.0004 |
+| 60/40 | 0.0039 | 0.0007 | 0.0005 | 0.0003 | 0.0004 |
+| Equal weight | 0.0106 | 0.0020 | 0.0012 | 0.0006 | 0.0007 |
+| Permanent | 0.0055 | 0.0011 | 0.0006 | 0.0004 | 0.0004 |
+
+At the floor, rebalancing every day costs at most 0.0106 points a year (equal
+weight), and every comparison of the rules stands as it was before costs: daily
+still leads monthly by 0.104 to 0.491 points (0.110 to 0.500 before), and the
+best rebalancing rule for each mix is the same. The floor averages below the
+lowest break-even cost above (2.0 bp). It is a lower bound on what an order
+that crosses the displayed quote pays, not on the cost of trading: an order
+filled at the midpoint or in the closing auction, where a rebalance at the
+close would trade, pays no spread, and commissions, market impact and wider
+quotes in stress all come on top. So the floor shows how cheap rebalancing can
+be, not how cheap it was.
 
 ## Mean-variance optimisation and the efficient frontier
 
@@ -1145,7 +1192,7 @@ zero rate made with the same command at a zero rate on the same days
 | Efficient frontier and mean-variance optimiser, held out of sample | done |
 | Fama-French factor attribution (Ken French data library), ratios against the bill rate | done |
 | Risk parity and CVaR optimisation, compared out of sample | done |
-| Cost-aware backtest: transaction costs, spreads, rebalancing drag | done |
+| Cost-aware backtest: transaction costs, spreads (assumed, and a measured floor), rebalancing drag | done |
 | Tableau extracts, dashboard spec and Plotly reproduction | to come |
 
 ## Development
