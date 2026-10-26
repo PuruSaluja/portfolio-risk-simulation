@@ -214,7 +214,7 @@ def breakeven(
 
 # One-way costs per unit traded the command reads the backtests at: 0 to 50 basis points.
 LEVELS = (0.0, 0.0001, 0.0005, 0.001, 0.0025, 0.005)
-COMPARE = (("daily", "monthly"), ("band:0.05", "never"))
+COMPARE = (("daily", "monthly"), ("daily", "band:0.05"), ("band:0.05", "never"))
 
 
 def run(

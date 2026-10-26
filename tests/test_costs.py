@@ -305,6 +305,7 @@ def test_the_defaults_are_every_mix_rule_and_cost(tmp_path: Path, capsys) -> Non
     ]
     assert [b["rules"] for b in written["breakeven"]] == [
         ["daily", "monthly"],
+        ["daily", "band:0.05"],
         ["band:0.05", "never"],
     ]
     assert written["spreads"] == {"AAA": 0.0, "BBB": 0.0}
