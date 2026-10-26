@@ -83,9 +83,9 @@ def per_unit(
         raise ValueError(f"no returns for {', '.join(unknown)}")
     values = [commission, *spreads.values()]
     if any(isinstance(v, bool) or not isinstance(v, int | float) for v in values):
-        raise ValueError("a commission or spread is a number")
+        raise ValueError("a cost or spread is a number")
     if not all(math.isfinite(v) and v >= 0.0 for v in values):
-        raise ValueError("a commission or spread is finite and not negative")
+        raise ValueError("a cost or spread is finite and not negative")
     k = commission + 0.5 * np.array([float(spreads.get(t, 0.0)) for t in tickers])
     if k.max(initial=0.0) > HIGHEST:
         raise ValueError(f"a one-way cost above {HIGHEST:.0%} of what is traded is refused")
