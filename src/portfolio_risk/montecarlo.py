@@ -469,7 +469,10 @@ def simulate(
     out = np.empty((paths, horizon))
     for i, child in enumerate(np.random.SeedSequence(seed).spawn(blocks)):
         n = min(BLOCK, paths - i * BLOCK)
-        funds = model.sample(np.random.default_rng(child), n, horizon)
+        # A whole block is drawn even when fewer paths are left: the t and bootstrap
+        # models draw two arrays from the stream, so drawing fewer paths would move
+        # where the second starts, and change every path of the block.
+        funds = model.sample(np.random.default_rng(child), BLOCK, horizon)[:n]
         out[i * BLOCK : i * BLOCK + n] = funds @ w
     return Simulation(model.name, seed, dict(zip(model.tickers, w.tolist(), strict=True)), out)
 

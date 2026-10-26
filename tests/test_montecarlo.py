@@ -126,6 +126,26 @@ def test_a_path_is_the_same_whatever_number_of_paths_is_asked_for() -> None:
     assert len(np.unique(many[:, 0])) == len(many)
 
 
+@pytest.mark.parametrize("name", ["normal", "t", "bootstrap"])
+def test_every_model_s_paths_are_the_same_whatever_number_is_asked_for(name) -> None:
+    # Regression: the t and bootstrap models draw two arrays from a block's stream, so a
+    # block with fewer paths than BLOCK started the second array elsewhere, and its paths
+    # changed with the number asked for.
+    chosen = {
+        "normal": model(),
+        "t": t_model(),
+        "bootstrap": BootstrapModel(TICKERS, daily_returns().to_numpy(), 5.0),
+    }[name]
+    weights = {"A": 0.5, "C": 0.5}
+    few = simulate(chosen, weights, 7, BLOCK + 3, seed=9).returns
+    many = simulate(chosen, weights, 7, 2 * BLOCK + 50, seed=9).returns
+    assert (few == many[: BLOCK + 3]).all()
+    assert (simulate(chosen, weights, 7, 3, seed=9).returns == few[:3]).all()
+    # A different seed gives different paths.
+    other = simulate(chosen, weights, 7, 3, seed=10).returns
+    assert not (other == few[:3]).all(axis=1).any()
+
+
 def test_a_singular_covariance_still_draws() -> None:
     # B is A doubled and C never varies: rank one, no Cholesky factor.
     cov = np.array([[1e-4, 2e-4, 0.0], [2e-4, 4e-4, 0.0], [0.0, 0.0, 0.0]])
