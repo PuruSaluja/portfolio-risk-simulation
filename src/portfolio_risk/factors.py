@@ -48,7 +48,7 @@ import pandas as pd
 
 from portfolio_risk import french
 from portfolio_risk import returns as ret
-from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest
+from portfolio_risk.data import DEFAULT_CACHE, DataError, check_output, load_cache, read_manifest
 from portfolio_risk.montecarlo import check_weights, historical_portfolio_returns, parse_weights
 from portfolio_risk.returns import TRADING_DAYS_PER_YEAR
 
@@ -308,6 +308,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--json", type=Path, help="also write the figures to this file")
     args = parser.parse_args(argv)
     try:
+        check_output(args.json)
         prices = load_cache(args.cache)
         factors = french.load_factors(args.factors)
         result = {

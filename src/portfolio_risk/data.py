@@ -287,6 +287,21 @@ def manifest_path(cache: Path) -> Path:
     return cache.with_name(cache.stem + ".manifest.json")
 
 
+def check_output(path: Path | None) -> None:
+    """Refuse a ``--json`` path that cannot be written as a file, before a command runs:
+    a folder, or a path under a file."""
+    if path is None:
+        return
+    path = Path(path)
+    if path.is_dir():
+        raise ValueError(f"{path} is a folder; --json takes a file to write")
+    for parent in path.parents:
+        if parent.exists():
+            if not parent.is_dir():
+                raise ValueError(f"{path} cannot be written: {parent} is a file")
+            break
+
+
 def _csv_bytes(prices: pd.DataFrame) -> bytes:
     buffer = io.StringIO()
     out = prices.copy()

@@ -67,7 +67,14 @@ import pandas as pd
 from portfolio_risk import covariance as cov
 from portfolio_risk import french, risk
 from portfolio_risk import returns as ret
-from portfolio_risk.data import DEFAULT_CACHE, DataError, load_cache, read_manifest, wide
+from portfolio_risk.data import (
+    DEFAULT_CACHE,
+    DataError,
+    check_output,
+    load_cache,
+    read_manifest,
+    wide,
+)
 from portfolio_risk.factors import align
 from portfolio_risk.montecarlo import historical_portfolio_returns
 from portfolio_risk.risk import BILLS, Rate, per_period_rate
@@ -679,6 +686,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--json", type=Path, help="also write the figures to this file")
     args = parser.parse_args(argv)
     try:
+        check_output(args.json)
         splits = _splits(args.split)
         prices = load_cache(args.cache)
         result = {"cache_sha256": read_manifest(args.cache)["sha256"]}

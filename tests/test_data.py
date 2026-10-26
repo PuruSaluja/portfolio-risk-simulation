@@ -1,4 +1,5 @@
 import hashlib
+import importlib
 import json
 import re
 from datetime import UTC, date, datetime
@@ -12,6 +13,7 @@ from portfolio_risk import data
 from portfolio_risk.data import (
     COLUMNS,
     DataError,
+    check_output,
     fetch_prices,
     load_cache,
     main,
@@ -590,3 +592,39 @@ def test_fetch_reports_an_unwritable_cache_without_a_traceback(
     assert main([*args, "--out", str(folder)]) == 1
     err = capsys.readouterr().err
     assert err.startswith("error: ") and "Traceback" not in err
+
+
+COMMANDS = (
+    "construction",
+    "costs",
+    "factors",
+    "frontier",
+    "montecarlo",
+    "risk",
+    "scenarios",
+    "summary",
+)
+
+
+@pytest.mark.parametrize("command", COMMANDS)
+def test_every_command_refuses_an_output_it_cannot_write_before_reading_anything(
+    command, tmp_path: Path, capsys
+) -> None:
+    main_ = importlib.import_module(f"portfolio_risk.{command}").main
+    # The cache does not exist: the output is checked first, so no data is read.
+    cache = str(tmp_path / "none.csv")
+    assert main_(["--cache", cache, "--json", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"error: {tmp_path} is a folder; --json takes a file to write\n"
+    a_file = tmp_path / "a.json"
+    a_file.write_text("{}", encoding="utf-8")
+    assert main_(["--cache", cache, "--json", str(a_file / "out.json")]) == 1
+    assert f"cannot be written: {a_file} is a file" in capsys.readouterr().err
+
+
+def test_an_output_check_lets_a_new_file_and_new_folders_through(tmp_path: Path) -> None:
+    check_output(None)
+    check_output(tmp_path / "out.json")
+    check_output(tmp_path / "new" / "deeper" / "out.json")
+    assert not (tmp_path / "new").exists()
