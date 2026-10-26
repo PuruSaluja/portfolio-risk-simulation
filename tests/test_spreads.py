@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from portfolio_risk import data as data_module
 from portfolio_risk import spreads
 from portfolio_risk.data import DataError, manifest_path
 from portfolio_risk.spreads import (
@@ -233,3 +234,85 @@ def test_corwin_schultz_moves_the_second_day_s_range_past_an_overnight_gap() -> 
         corwin_schultz_by_loop(high, low, close),
         rtol=1e-12,
     )
+
+
+def caches(tmp_path: Path, spread=0.002, shift_close=False):
+    """A price cache and a ranges cache for two funds over February to April 2006, the
+    bars around a still mid-price, AAA paying a dividend on 2006-03-15."""
+    days = pd.bdate_range("2006-01-30", "2006-04-28")
+    rng = np.random.default_rng(1)
+    price_rows, range_rows = [], []
+    for ticker, mid in (("AAA", 40.0), ("BBB", 80.0)):
+        ask, bid = mid * (1 + spread / 2), mid * (1 - spread / 2)
+        for day in days:
+            close = float(ask if rng.random() < 0.5 else bid)
+            dividend = 0.2 if (ticker, day) == ("AAA", pd.Timestamp("2006-03-15")) else 0.0
+            price_rows.append((day.date(), ticker, close, dividend, 0.0, 0.0, 1e6))
+            listed = close * (1.0001 if shift_close else 1.0)
+            range_rows.append((day.date(), ticker, ask, bid, min(max(listed, bid), ask)))
+    prices = tmp_path / "prices.csv"
+    ranges = tmp_path / "ranges.csv"
+    data_module.write_cache(
+        pd.DataFrame(price_rows, columns=list(data_module.COLUMNS)),
+        prices,
+        start=date(2006, 1, 25),
+        end=date(2006, 4, 30),
+        source="t",
+    )
+    write_cache(
+        pd.DataFrame(range_rows, columns=list(COLUMNS)),
+        ranges,
+        start=date(2006, 1, 25),
+        end=date(2006, 4, 30),
+        source="t",
+    )
+    return prices, ranges
+
+
+def test_the_estimates_are_set_beside_the_one_cent_spread(tmp_path: Path) -> None:
+    prices_path, ranges_path = caches(tmp_path)
+    prices = data_module.load_cache(prices_path)
+    result = spreads.estimate(load_ranges(ranges_path), prices, seed=4)
+    assert result["first_month"] == "2006-02" and result["last_day"] == "2006-04-28"
+    assert list(result["funds"]) == ["AAA", "BBB"]
+    aaa = result["funds"]["AAA"]
+    assert aaa["months"] == 3
+    # A still mid-price: both estimators give the spread, whatever days are skipped.
+    assert aaa["abdi_ranaldo"]["mean"] == pytest.approx(np.log(1.001 / 0.999), rel=1e-12)
+    assert aaa["corwin_schultz"]["median"] == pytest.approx(0.002, rel=1e-12)
+    assert aaa["abdi_ranaldo"]["months_at_zero"] == 0
+    closes = prices[prices["ticker"] == "AAA"].set_index("date")["close"]
+    closes.index = pd.DatetimeIndex(closes.index)
+    closes = closes.loc["2006-02-01":]
+    cent = (0.01 / closes).groupby(closes.index.to_period("M")).mean().mean()
+    assert aaa["one_cent_spread"] == pytest.approx(cent, rel=1e-12)
+    moves = np.log(closes).diff().iloc[1:]
+    moves = moves[moves.index != pd.Timestamp("2006-03-15")]
+    assert aaa["daily_volatility"] == pytest.approx(moves.std(), rel=1e-12)
+    bars = spreads.simulate(cent, moves.std(), len(closes), seed=4)
+    simulated = spreads.abdi_ranaldo(bars["high"], bars["low"], bars["close"]).mean()
+    assert aaa["simulated_at_one_cent"]["abdi_ranaldo"] == pytest.approx(simulated, rel=1e-12)
+
+
+def test_ranges_that_are_not_the_price_cache_s_are_refused(tmp_path: Path) -> None:
+    prices_path, ranges_path = caches(tmp_path, shift_close=True)
+    with pytest.raises(DataError, match="the price cache's days and closes"):
+        spreads.estimate(load_ranges(ranges_path), data_module.load_cache(prices_path))
+
+
+def test_the_estimate_command_writes_its_figures(tmp_path: Path, capsys) -> None:
+    prices_path, ranges_path = caches(tmp_path)
+    out = tmp_path / "results" / "spreads.json"
+    argv = ["estimate", "--ranges", str(ranges_path), "--cache", str(prices_path)]
+    assert main([*argv, "--json", str(out)]) == 0
+    assert "estimated from highs and lows, the one-cent spread" in capsys.readouterr().out
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["ranges_sha256"] == read_manifest(ranges_path)["sha256"]
+    assert written["cache_sha256"] == data_module.read_manifest(prices_path)["sha256"]
+    assert written["seed"] == 0 and set(written["funds"]) == {"AAA", "BBB"}
+    assert main([*argv, "--json", str(tmp_path)]) == 1
+    assert "is a folder; --json takes a file" in capsys.readouterr().err
+
+
+def test_a_summary_gives_the_mean_and_the_median_of_the_months() -> None:
+    assert spreads._mean_median(pd.Series([0.0, 0.0, 0.003])) == {"mean": 0.001, "median": 0.0}

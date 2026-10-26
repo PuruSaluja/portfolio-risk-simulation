@@ -52,6 +52,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from portfolio_risk import data as price_data
+from portfolio_risk.data import DEFAULT_CACHE as PRICES_CACHE
 from portfolio_risk.data import (
     DEFAULT_END,
     DEFAULT_START,
@@ -60,6 +62,7 @@ from portfolio_risk.data import (
     _parse_date,
     _validate_window,
     _write_atomic,
+    check_output,
     manifest_path,
     validate_tickers,
 )
@@ -358,6 +361,90 @@ def simulate(
     )
 
 
+def _mean_median(monthly: pd.Series) -> dict[str, float]:
+    return {"mean": float(monthly.mean()), "median": float(monthly.median())}
+
+
+def estimate(ranges: pd.DataFrame, prices: pd.DataFrame, seed: int = 0) -> dict[str, Any]:
+    """Each fund's estimated spreads beside the one-cent spread, over the whole months from the
+    tick rule (``costs.TICK_FROM``) on, and what the estimators read in simulation when
+    the spread is exactly one cent at the fund's own daily volatility.
+
+    The ranges must be the price cache's days and closes. Windows ending on a
+    distribution or split day are left out.
+    """
+    from portfolio_risk import costs
+
+    merged = ranges.merge(
+        prices[["date", "ticker", "close", "dividend", "capital_gain", "split"]],
+        on=["date", "ticker"],
+        how="outer",
+        suffixes=("", "_prices"),
+        indicator=True,
+    )
+    if (merged["_merge"] != "both").any() or (merged["close"] != merged["close_prices"]).any():
+        raise DataError("the ranges must hold the price cache's days and closes")
+    # The first whole month of the tick rule (``costs.TICK_FROM``, 31 January 2006).
+    first = pd.Timestamp(costs.TICK_FROM) + pd.offsets.MonthBegin(1)
+    traded = costs.traded_closes(prices)
+    out: dict[str, Any] = {}
+    for ticker in dict.fromkeys(prices["ticker"]):
+        group = merged[merged["ticker"] == ticker]
+        bars = group.set_index(pd.DatetimeIndex(group["date"]))
+        skip = bars.index[(bars["dividend"] > 0) | (bars["capital_gain"] > 0) | (bars["split"] > 0)]
+        bars = bars.loc[first:]
+        ar = abdi_ranaldo(bars["high"], bars["low"], bars["close"], skip)
+        cs = corwin_schultz(bars["high"], bars["low"], bars["close"], skip)
+        cent = (costs.TICK / traded.loc[first:, ticker]).groupby(lambda d: d.to_period("M")).mean()
+        moves = np.log(bars["close"]).diff().iloc[1:]
+        volatility = float(moves[~moves.index.isin(skip)].std(ddof=1))
+        cent_spread = float(cent.mean())
+        simulated = simulate(cent_spread, volatility, len(bars), seed=seed)
+        out[str(ticker)] = {
+            "months": len(ar),
+            "one_cent_spread": cent_spread,
+            "daily_volatility": volatility,
+            "abdi_ranaldo": _mean_median(ar) | {"months_at_zero": int((ar == 0).sum())},
+            "corwin_schultz": _mean_median(cs),
+            "simulated_at_one_cent": {
+                "abdi_ranaldo": float(
+                    abdi_ranaldo(simulated["high"], simulated["low"], simulated["close"]).mean()
+                ),
+                "corwin_schultz": float(
+                    corwin_schultz(simulated["high"], simulated["low"], simulated["close"]).mean()
+                ),
+            },
+        }
+    days = pd.DatetimeIndex(merged["date"])
+    return {
+        "first_month": str(first.to_period("M")),
+        "last_day": days.max().date().isoformat(),
+        "seed": seed,
+        "funds": out,
+    }
+
+
+def _print_estimates(result: dict[str, Any]) -> None:
+    print(
+        f"spreads by month, {result['first_month']} to {result['last_day']}, in basis points "
+        "of the price: estimated from highs and lows, the one-cent spread, and what the "
+        f"estimators read when the spread is one cent (simulated, seed {result['seed']})"
+    )
+    print(
+        f"\n{'':5} {'AR mean':>8} {'median':>7} {'zero':>9} {'CS mean':>8} {'one cent':>8} "
+        f"{'vol/day':>8} {'sim AR':>7} {'sim CS':>7}"
+    )
+    for ticker, f in result["funds"].items():
+        ar, cs, sim = f["abdi_ranaldo"], f["corwin_schultz"], f["simulated_at_one_cent"]
+        zero = f"{ar['months_at_zero']}/{f['months']}"
+        print(
+            f"{ticker:5} {ar['mean'] * 1e4:>8.1f} {ar['median'] * 1e4:>7.1f} {zero:>9} "
+            f"{cs['mean'] * 1e4:>8.1f} {f['one_cent_spread'] * 1e4:>8.2f} "
+            f"{f['daily_volatility']:>8.2%} {sim['abdi_ranaldo'] * 1e4:>7.1f} "
+            f"{sim['corwin_schultz'] * 1e4:>7.1f}"
+        )
+
+
 def _print_summary(manifest: dict[str, Any]) -> None:
     print(f"{manifest['rows']} rows, {manifest['start']} to {manifest['end']}")
     for ticker, info in manifest["tickers"].items():
@@ -381,8 +468,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     fetch.add_argument("--out", type=Path, default=DEFAULT_CACHE)
     verify = commands.add_parser("verify", help="check a cache against its manifest")
     verify.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    estimated = commands.add_parser(
+        "estimate", help="estimate the spreads and set them beside the one-cent spread"
+    )
+    estimated.add_argument("--ranges", type=Path, default=DEFAULT_CACHE)
+    estimated.add_argument("--cache", type=Path, default=PRICES_CACHE, help="the price cache")
+    estimated.add_argument("--seed", type=int, default=0, help="for the simulation (default 0)")
+    estimated.add_argument("--json", type=Path, help="also write the figures to this file")
     args = parser.parse_args(argv)
     try:
+        if args.command == "estimate":
+            check_output(args.json)
+            result = {
+                "ranges_sha256": read_manifest(args.ranges)["sha256"],
+                "cache_sha256": price_data.read_manifest(args.cache)["sha256"],
+                **estimate(load_ranges(args.ranges), price_data.load_cache(args.cache), args.seed),
+            }
+            # Written before anything is printed, so a failure leaves no half-finished run.
+            if args.json:
+                args.json.parent.mkdir(parents=True, exist_ok=True)
+                with open(args.json, "w", encoding="utf-8", newline="\n") as out:
+                    json.dump(result, out, indent=2, allow_nan=False)
+                    out.write("\n")
+            _print_estimates(result)
+            return 0
         if args.command == "fetch":
             import yfinance
 
@@ -423,7 +532,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             load_ranges(args.cache)
             _print_summary(read_manifest(args.cache))
             print(f"{args.cache} matches its manifest.")
-    except (DataError, OSError) as exc:
+    except (DataError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0
