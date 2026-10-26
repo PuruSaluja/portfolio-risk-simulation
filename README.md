@@ -428,27 +428,30 @@ January 2005 to 31 August 2026 (5,448 days), with the one-month bill at 1.74%
 a year compounded
 ([`results/risk-metrics-bills.json`](results/risk-metrics-bills.json)):
 
-| Series | Compound return | Sharpe, daily | Sharpe, monthly | Sortino | Sharpe against zero (above) | Sortino against zero |
+| Series | Compound return | Sharpe, daily | Sharpe, monthly | Sortino | Sharpe at zero, same days | Sortino at zero, same days |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | SPY | 10.93% | 0.55 | 0.66 | 0.78 | 0.64 | 0.91 |
-| IWM | 8.72% | 0.40 | 0.44 | 0.56 | 0.46 | 0.65 |
-| EFA | 6.32% | 0.32 | 0.35 | 0.44 | 0.39 | 0.55 |
+| IWM | 8.72% | 0.40 | 0.44 | 0.56 | 0.47 | 0.66 |
+| EFA | 6.32% | 0.32 | 0.35 | 0.44 | 0.40 | 0.56 |
 | EEM | 7.32% | 0.33 | 0.36 | 0.48 | 0.39 | 0.57 |
-| AGG | 3.00% | 0.26 | 0.30 | 0.36 | 0.57 | 0.79 |
-| TLT | 2.96% | 0.15 | 0.15 | 0.22 | 0.26 | 0.37 |
-| GLD | 10.95% | 0.57 | 0.59 | 0.80 | 0.64 | 0.91 |
-| VNQ | 6.97% | 0.32 | 0.34 | 0.46 | 0.37 | 0.53 |
-| Equal weight | 8.45% | 0.53 | 0.62 | 0.76 | 0.64 | 0.92 |
+| AGG | 3.00% | 0.26 | 0.30 | 0.36 | 0.59 | 0.82 |
+| TLT | 2.96% | 0.15 | 0.15 | 0.22 | 0.27 | 0.39 |
+| GLD | 10.95% | 0.57 | 0.59 | 0.80 | 0.66 | 0.94 |
+| VNQ | 6.97% | 0.32 | 0.34 | 0.46 | 0.38 | 0.54 |
+| Equal weight | 8.45% | 0.53 | 0.62 | 0.76 | 0.66 | 0.94 |
 
 The window ends a month earlier than the table above's, which moves the
 compound returns a little (SPY 10.93% against 10.87%); the drawdowns are the
-same. Against the bill every daily Sharpe ratio is lower than against zero, by
-11.5% (GLD) to 19.0% (EFA) for the equity funds and gold, by 17.1% for the
-equal-weight portfolio, and by 39.4% for TLT and 53.8% for AGG: a bond fund
-earning 3% a year earned little more than the bill, so most of its zero-rate
-ratio was the bill's. AGG's daily Sharpe ratio, 0.57 against zero (only SPY,
-gold and the portfolio were higher, at 0.64), is 0.26 against the bill, below
-every equity fund's. The bill compounds to 4.25% to 5.25% a year in 2023 to
+same. So that the comparison shows the rate alone, the last two columns are
+the same measures at a zero rate over the same days (`at_zero_rate` in the
+file). Against the bill every daily Sharpe ratio is lower, by 14.2% (SPY) to
+20.7% (EFA) for the equity funds and gold, by 19.0% for the equal-weight
+portfolio, and by 43.4% for TLT and 55.8% for AGG: a bond fund earning 3% a
+year earned little more than the bill, so most of its zero-rate ratio was the
+bill's. (Against the zero-rate table above, a month longer, the falls look
+smaller: 17.1% for equal weight, 53.8% for AGG.) AGG's daily Sharpe ratio,
+0.59 at zero on these days (only SPY, gold and the portfolio were higher, at
+0.64 to 0.66), is 0.26 against the bill, below every equity fund's. The bill compounds to 4.25% to 5.25% a year in 2023 to
 2025 and 2006 to 2007, and to at most 0.10% in each year from 2009 to 2015
 and in 2021, so the gap between the two tables depends on the window.
 
@@ -814,23 +817,26 @@ five splits; 1.42% to 3.93% after them. On the whole history that constant
 rate gives the minimum-variance, tangency and equal-weight portfolios expected
 ratios within 0.00013 of their Sharpe ratios against the bill day by day
 (0.42767 against 0.42766, 0.80407 against 0.80419, 0.53165 against 0.53167).
+Every comparison with a zero rate in this section is with the same command at
+a zero rate over the same days (`at_zero_rate` in the files), so that it shows
+the rate alone.
 
 The whole history
 ([`results/frontier-bills.json`](results/frontier-bills.json),
 [`results/frontier-cap30-bills.json`](results/frontier-cap30-bills.json)), in
 sample:
 
-| Portfolio | Cap | Expected | Volatility | Sharpe | Sharpe against zero (above) | Weights |
+| Portfolio | Cap | Expected | Volatility | Sharpe | Sharpe at zero, same days | Weights |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
-| Minimum variance | none | 3.87% | 5.01% | 0.428 | 0.744 | AGG 91.4%, SPY 6.9%, GLD 1.7% |
-| Tangency | none | 10.25% | 10.60% | 0.804 | 0.988 | SPY 41.6%, GLD 35.2%, TLT 23.2% |
-| Minimum variance | 30% | 6.98% | 7.48% | 0.702 | 0.907 | TLT 30.0%, AGG 30.0%, SPY 25.9%, GLD 14.1% |
-| Tangency | 30% | 8.63% | 8.70% | 0.794 | 0.976 | SPY 30.0%, GLD 30.0%, AGG 27.1%, TLT 12.9% |
-| Equal weight | - | 9.08% | 13.83% | 0.532 | 0.642 | 12.5% each |
+| Minimum variance | none | 3.87% | 5.01% | 0.428 | 0.772 | AGG 91.4%, SPY 6.9%, GLD 1.7% |
+| Tangency | none | 10.25% | 10.60% | 0.804 | 1.014 | SPY 41.6%, GLD 35.2%, TLT 23.2% |
+| Minimum variance | 30% | 6.98% | 7.48% | 0.702 | 0.933 | TLT 30.0%, AGG 30.0%, SPY 25.9%, GLD 14.1% |
+| Tangency | 30% | 8.63% | 8.70% | 0.794 | 1.000 | SPY 30.0%, GLD 30.0%, AGG 27.1%, TLT 12.9% |
+| Equal weight | - | 9.08% | 13.83% | 0.532 | 0.656 | 12.5% each |
 
 The minimum-variance portfolio does not depend on the rate; its ratio falls
-the most, by 42.5%, against 17.1% for equal weight. The tangency portfolio
-chosen at the bill holds no AGG (55.2% at a zero rate).
+the most, by 44.6%, against 19.0% for equal weight. The tangency portfolio
+chosen at the bill holds no AGG (56.1% at a zero rate).
 
 Chosen up to each split and held after it, the Sharpe ratio expected, then
 realised, against the bill:
@@ -850,8 +856,9 @@ realised, against the bill:
   and tangency portfolios after every split** (0.29 to 0.63, against -0.40 to
   0.45 and 0.05 to 0.50), as against a zero rate.
 - **The cap's advantage mostly goes.** The capped minimum-variance portfolio
-  beat equal weight only after 2009 (0.73 against 0.63; against a zero rate
-  after 2009, 2012 and 2015), and the capped tangency portfolio after none.
+  beat equal weight only after 2009 (0.73 against 0.63; at a zero rate after
+  2009, 2012, 2015 and 2018), and the capped tangency portfolio after none (at
+  a zero rate after 2015 and 2018).
 - **The uncapped tangency portfolios hold less AGG**: 28.4% to 47.0% chosen
   before a split, against 50.5% to 61.8% at a zero rate. Capped, they hold
   AGG at or near the cap either way (30% after four splits, 28.4% after 2021
@@ -1091,17 +1098,18 @@ and nothing here charges trading costs.
 
 **Against the Treasury bill**, over the days the factor cache covers (to 31
 August 2026, a month shorter than above), the tangency portfolio chosen at
-the bill's mean rate as in the frontier section
+the bill's mean rate as in the frontier section, and every comparison with a
+zero rate made with the same command at a zero rate on the same days
 ([`results/construction-bills.json`](results/construction-bills.json)):
 
-| Portfolio | Sharpe | Sharpe against zero (above) | Change |
+| Portfolio | Sharpe | Sharpe at zero, same days | Change |
 | --- | ---: | ---: | ---: |
-| Equal weight | 0.53 | 0.64 | -17.1% |
-| Inverse volatility | 0.59 | 0.75 | -21.8% |
-| Risk parity | 0.61 | 0.80 | -23.1% |
-| Minimum variance | 0.43 | 0.74 | -42.5% |
-| Tangency | 0.80 | 0.99 | -18.6% |
-| Minimum CVaR | 0.44 | 0.75 | -41.6% |
+| Equal weight | 0.53 | 0.66 | -19.0% |
+| Inverse volatility | 0.59 | 0.77 | -23.9% |
+| Risk parity | 0.61 | 0.82 | -25.5% |
+| Minimum variance | 0.43 | 0.77 | -44.6% |
+| Tangency | 0.80 | 1.01 | -20.7% |
+| Minimum CVaR | 0.44 | 0.78 | -43.9% |
 
 | Sharpe ratio held after, against the bill | Equal weight | Inverse volatility | Risk parity | Minimum variance | Tangency | Minimum CVaR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -1112,8 +1120,8 @@ the bill's mean rate as in the frontier section
 | 2021 | 0.29 | 0.11 | -0.05 | -0.40 | 0.05 | -0.43 |
 
 - **The AGG-heavy portfolios lose the most.** In sample, minimum variance's
-  and minimum CVaR's ratios fall by 42.5% and 41.6%, the others' by 17.1% to
-  23.1% (the tangency portfolio's is that of a different portfolio, chosen at
+  and minimum CVaR's ratios fall by 44.6% and 43.9%, the others' by 19.0% to
+  25.5% (the tangency portfolio's is that of a different portfolio, chosen at
   the bill). Risk parity's 0.61 is still above equal weight's 0.53.
 - **Held after a split, equal weight comes first more often.** It had the
   highest ratio of the six after 2012, 2015, 2018 and 2021, and inverse
