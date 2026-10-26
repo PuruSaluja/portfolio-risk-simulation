@@ -552,7 +552,8 @@ What they show:
   gains when part of the rise reverses. It is one history, before costs, and
   daily rebalancing trades 48.6% to 81.5% of the portfolio a year against 9.3%
   to 15.8% monthly, so costs decide whether any of it survives ([Trading
-  costs](#trading-costs): below 12.9 to 35.2 basis points a trade, by mix). A
+  costs](#trading-costs): at one-way costs below 12.9 to 35.2 basis points,
+  by mix). A
   5-point band traded 2.2% to 5.2% a year, close
   to yearly rebalancing (2.9% to 4.7%), and returned 8.41% for equal weight,
   the most of its six.
@@ -602,8 +603,8 @@ python -m portfolio_risk.costs --json results/costs.json
 `--cost` sets a level (it may be given more than once), `--spread` adds half
 of a quoted spread to each, one for every fund (`0.0002`) or one each
 (`SPY=0.0001,EEM=0.0006`), `--mix` and `--rule` are as in the scenarios, and
-`--compare` names two rules for a break-even cost (by default `daily,monthly`
-and `band:0.05,never`).
+`--compare` names two rules for a break-even cost (by default `daily,monthly`,
+`daily,band:0.05` and `band:0.05,never`).
 
 ### Results
 
@@ -641,12 +642,12 @@ costs and after a one-way cost per unit traded of:
 The figures before costs are the scenarios' to the last digit. The
 break-even costs:
 
-| Mix | Daily's lead over monthly, before costs | Cost that ends it | 5-point band's lead over buy and hold | Cost that ends it |
-| --- | ---: | ---: | ---: | ---: |
-| Equity | 0.110 pt | 12.9 bp | 0.062 pt | above 100 bp |
-| 60/40 | 0.221 pt | 26.0 bp | -0.781 pt | no lead |
-| Equal weight | 0.500 pt | 35.2 bp | 0.730 pt | above 100 bp |
-| Permanent | 0.274 pt | 23.6 bp | -0.601 pt | no lead |
+| Mix | Daily's lead over monthly, before costs | Cost that ends it | Daily's lead over the 5-point band | Cost that ends it | 5-point band's lead over buy and hold | Cost that ends it |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Equity | 0.110 pt | 12.9 bp | 0.028 pt | 2.7 bp | 0.062 pt | above 100 bp |
+| 60/40 | 0.221 pt | 26.0 bp | -0.038 pt | no lead | -0.781 pt | no lead |
+| Equal weight | 0.500 pt | 35.2 bp | -0.191 pt | no lead | 0.730 pt | above 100 bp |
+| Permanent | 0.274 pt | 23.6 bp | 0.027 pt | 2.0 bp | -0.601 pt | no lead |
 
 What they show:
 
@@ -664,10 +665,10 @@ What they show:
   by 0.20 to 0.31 points. Equal weight rebalanced daily returns 8.22% before
   costs and 7.34% at 50 bp, below its 7.68% left alone.
 - **The 5-point band is the best rebalancing rule from 5 bp up for every
-  mix**, and at every cost for the 60/40 and equal weight; below 5 bp, daily
-  rebalancing is best for the equity and permanent mixes. Its lead over buy
-  and hold for the equity and equal-weight mixes outlasts any one-way cost up
-  to 1%. Buy and hold returns the most for the 60/40 and the permanent mix at
+  mix**, and at every cost for the 60/40 and equal weight. Daily rebalancing
+  leads it for the equity and permanent mixes only below 2.7 and 2.0 bp. The
+  band's lead over buy and hold for the equity and equal-weight mixes
+  outlasts any one-way cost up to 1%. Buy and hold returns the most for the 60/40 and the permanent mix at
   any cost, by drifting into other portfolios (see the scenarios).
 
 It is one history, and the costs are assumed levels: what the funds cost to
@@ -843,8 +844,10 @@ realised, against the bill:
 - **The cap's advantage mostly goes.** The capped minimum-variance portfolio
   beat equal weight only after 2009 (0.73 against 0.63; against a zero rate
   after 2009, 2012 and 2015), and the capped tangency portfolio after none.
-- **The tangency portfolios hold less AGG**: 28.4% to 47.0% chosen before a
-  split, against 50.5% to 61.8% at a zero rate.
+- **The uncapped tangency portfolios hold less AGG**: 28.4% to 47.0% chosen
+  before a split, against 50.5% to 61.8% at a zero rate. Capped, they hold
+  AGG at or near the cap either way (30% after four splits, 28.4% after 2021
+  against 30%).
 
 ## Factor attribution
 
