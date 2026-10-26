@@ -283,6 +283,19 @@ def wide(prices: pd.DataFrame, column: str) -> pd.DataFrame:
     return table
 
 
+def prices_between(
+    prices: pd.DataFrame, first_return: pd.Timestamp, last_return: pd.Timestamp
+) -> pd.DataFrame:
+    """The cache's rows that give the daily returns from ``first_return`` to
+    ``last_return``: from the last close every fund has before the first, to the last."""
+    closes = wide(prices, "close").dropna().index
+    earlier = closes[closes < pd.Timestamp(first_return)]
+    start = earlier[-1] if len(earlier) else pd.Timestamp(first_return)
+    dates = pd.to_datetime(prices["date"])
+    keep = (dates >= start) & (dates <= pd.Timestamp(last_return))
+    return prices[keep.to_numpy()].reset_index(drop=True)
+
+
 def manifest_path(cache: Path) -> Path:
     return cache.with_name(cache.stem + ".manifest.json")
 

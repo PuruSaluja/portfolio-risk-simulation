@@ -454,6 +454,19 @@ def test_the_command_measures_against_the_bill_over_the_days_it_covers(
         (1 + rate).prod() ** (1 / years) - 1, rel=1e-9
     )
     assert figures["max_drawdown"]["depth"] == pytest.approx(max_drawdown(aaa).depth)
+    # Beside it, the same measures at a zero rate over the same days.
+    zero = written["at_zero_rate"]
+    assert (zero["first_return"], zero["last_return"], zero["daily_returns"]) == (
+        "2023-01-03",
+        "2024-11-29",
+        499,
+    )
+    assert zero["risk_free"] == 0.0 and "at_zero_rate" not in zero
+    at_zero = zero["series"]["AAA"]
+    assert at_zero["sharpe_ratio"] == pytest.approx(sharpe_ratio(aaa, 252), rel=1e-12)
+    assert at_zero["sortino_ratio"] == pytest.approx(sortino_ratio(aaa, 252), rel=1e-12)
+    assert at_zero["sharpe_ratio"] > figures["sharpe_ratio"]
+    assert at_zero["compound_return"] == figures["compound_return"]
 
 
 def test_a_constant_rate_leaves_the_output_as_it_was(tmp_path: Path) -> None:
@@ -499,3 +512,17 @@ def test_a_risk_free_rate_that_is_neither_a_number_nor_bills_is_refused_plainly(
     err = capsys.readouterr().err
     assert f"a compound annual rate such as 0.02, or bills, not {text!r}" in err
     assert "_risk_free_argument" not in err
+
+
+def test_a_zero_rate_run_over_other_days_is_refused() -> None:
+    from portfolio_risk.risk import same_days
+
+    days = {"first_return": "2023-01-03", "last_return": "2024-11-29", "daily_returns": 499}
+    assert same_days(dict(days), days) == days
+    for key, other in [
+        ("first_return", "2023-01-04"),
+        ("last_return", "2024-12-31"),
+        ("daily_returns", 500),
+    ]:
+        with pytest.raises(ValueError, match="does not cover the same days"):
+            same_days(days | {key: other}, days)

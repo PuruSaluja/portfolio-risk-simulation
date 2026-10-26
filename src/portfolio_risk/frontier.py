@@ -72,6 +72,7 @@ from portfolio_risk.data import (
     DataError,
     check_output,
     load_cache,
+    prices_between,
     read_manifest,
     wide,
 )
@@ -548,7 +549,7 @@ def run(
     bills = bill_rate(risk_free, prices, daily)
     if bills:
         bills["constant_rate"] = rate
-    return {
+    result = {
         **_span(daily),
         "estimator": estimator,
         "max_weight": max_weight,
@@ -575,6 +576,13 @@ def run(
         ],
         "splits": held_out,
     }
+    if bills:
+        # The same at a zero rate on the same days, so that a comparison with the zero
+        # rate shows the rate alone.
+        trimmed = prices_between(prices, daily.index[0], daily.index[-1])
+        zero = run(trimmed, estimator, max_weight, points, 0.0, splits)
+        result["at_zero_rate"] = risk.same_days(zero, result)
+    return result
 
 
 def _weights_text(weights: dict[str, float]) -> str:

@@ -688,6 +688,20 @@ def test_the_command_measures_against_the_bill_over_the_days_it_covers(
     assert split["chosen_after"]["max_sharpe"]["sharpe_ratio"] == pytest.approx(
         (mean - 252 * rates_after.mean()) / sd, rel=1e-12
     )
+    # Beside it, the same at a zero rate over the same days: the zero-rate tangency
+    # portfolio of these returns, and ratios of total return.
+    zero = written["at_zero_rate"]
+    assert (zero["first_return"], zero["last_return"]) == ("2023-01-03", "2024-11-29")
+    assert zero["risk_free"] == 0.0 and "constant_rate" not in zero
+    assert (
+        zero["portfolios"]["max_sharpe"]["weights"] == fr.max_sharpe(*fr.estimates(daily)).to_dict()
+    )
+    held_zero = zero["splits"][0]["portfolios"]["max_sharpe"]
+    w = fr.max_sharpe(*early)
+    assert held_zero["weights"] == w.to_dict()
+    assert held_zero["realised"]["sharpe_ratio"] == pytest.approx(
+        sharpe_ratio(historical_portfolio_returns(after, w.to_dict()), 252), rel=1e-12
+    )
 
 
 def test_the_whole_history_tangency_portfolio_takes_the_bill_s_mean_rate() -> None:

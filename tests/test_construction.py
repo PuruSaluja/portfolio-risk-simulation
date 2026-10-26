@@ -429,6 +429,18 @@ def test_the_command_measures_against_the_bill_over_the_days_it_covers(
         pd.Series(result["portfolios"]["max_sharpe"]["weights"]), held, atol=1e-12
     )
     assert result["constant_rate"] == pytest.approx(rate_before, rel=1e-12)
+    # Beside it, the same at a zero rate over the same days.
+    zero = written["at_zero_rate"]
+    assert (zero["first_return"], zero["last_return"]) == ("2023-01-03", "2024-11-29")
+    assert zero["risk_free"] == 0.0
+    for name, p in zero["portfolios"].items():
+        history = portfolio(daily, pd.Series(p["weights"]))
+        assert p["in_sample"]["sharpe_ratio"] == pytest.approx(
+            sharpe_ratio(history, 252), rel=1e-12
+        ), name
+    # Rules that do not use the rate pick the same weights at either rate.
+    for name in ("equal", "inverse_volatility", "risk_parity", "minimum_variance"):
+        assert zero["portfolios"][name]["weights"] == written["portfolios"][name]["weights"]
 
 
 def test_a_constant_rate_adds_nothing_to_the_output(tmp_path: Path) -> None:

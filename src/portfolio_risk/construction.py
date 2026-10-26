@@ -60,6 +60,7 @@ from portfolio_risk.data import (
     DataError,
     check_output,
     load_cache,
+    prices_between,
     read_manifest,
     wide,
 )
@@ -340,7 +341,7 @@ def run(
     bills = frontier.bill_rate(risk_free, prices, daily)
     if bills:
         bills["constant_rate"] = frontier.constant_rate(risk_free, daily.index)
-    return {
+    result = {
         **frontier._span(daily),
         "risk_free": risk_free,
         **bills,
@@ -355,6 +356,13 @@ def run(
         },
         "splits": held_out,
     }
+    if bills:
+        # The same at a zero rate on the same days, so that a comparison with the zero
+        # rate shows the rate alone.
+        trimmed = prices_between(prices, daily.index[0], daily.index[-1])
+        zero = run(trimmed, 0.0, max_weight, level, splits)
+        result["at_zero_rate"] = risk.same_days(zero, result)
+    return result
 
 
 def _ratio(value: float | None) -> str:

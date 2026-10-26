@@ -62,6 +62,7 @@ from portfolio_risk.data import (
     DataError,
     check_output,
     load_cache,
+    prices_between,
     read_manifest,
     wide,
 )
@@ -336,7 +337,19 @@ def run(prices: pd.DataFrame, weights_text: str, risk_free: Rate = 0.0) -> dict[
         result["risk_free"] = "one-month Treasury bill"
         # Compound over the days used, as the funds' compound returns are.
         result["risk_free_compound"] = float(ret.annualised_return(daily_rate, per_year))
+        # The same measures at a zero rate on the same days, so that a comparison with
+        # the zero rate shows the rate alone.
+        zero = run(prices_between(prices, daily.index[0], daily.index[-1]), weights_text)
+        result["at_zero_rate"] = same_days(zero, result)
     return result
+
+
+def same_days(zero: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """``zero``, refused unless it covers the days ``result`` does."""
+    keys = ("first_return", "last_return", "daily_returns")
+    if [zero[k] for k in keys] != [result[k] for k in keys]:
+        raise ValueError("the zero-rate run does not cover the same days")
+    return zero
 
 
 def _ratio(value: float | None) -> str:

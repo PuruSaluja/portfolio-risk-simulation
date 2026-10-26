@@ -18,11 +18,13 @@ from portfolio_risk.data import (
     load_cache,
     main,
     manifest_path,
+    prices_between,
     read_manifest,
     validate_tickers,
     wide,
     write_cache,
 )
+from portfolio_risk.returns import total_returns
 
 START = date(2024, 1, 1)
 END = date(2024, 1, 12)
@@ -636,3 +638,23 @@ def test_a_folder_given_as_the_cache_is_refused_as_one(tmp_path: Path) -> None:
             DataError, match=re.escape(f"{tmp_path} is a folder; the cache is a file")
         ):
             read(tmp_path)
+
+
+def test_prices_between_give_the_returns_of_those_days_alone() -> None:
+    days = pd.bdate_range("2024-01-02", "2024-03-29")
+    rng = np.random.default_rng(0)
+    rows = []
+    for ticker in ("AAA", "BBB"):
+        close = 50.0 * np.cumprod(1 + rng.normal(0.0, 0.01, len(days)))
+        for i, (day, value) in enumerate(zip(days, close, strict=True)):
+            payout = 0.3 if (ticker, i) in {("AAA", 11), ("BBB", 30)} else 0.0
+            rows.append((day.date(), ticker, float(value), payout, 0.0, 0.0, 1e6))
+    prices = pd.DataFrame(rows, columns=list(COLUMNS))
+    daily = total_returns(prices)
+    for first, last in [(daily.index[0], daily.index[-1]), (daily.index[10], daily.index[40])]:
+        part = total_returns(prices_between(prices, first, last))
+        assert part.index.equals(daily.loc[first:last].index)
+        np.testing.assert_allclose(part, daily.loc[first:last], rtol=1e-15)
+    # A first return before the first close starts at the first close.
+    whole = total_returns(prices_between(prices, pd.Timestamp("2023-06-01"), daily.index[-1]))
+    assert whole.index.equals(daily.index)
