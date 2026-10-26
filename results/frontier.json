@@ -436,7 +436,117 @@
             "mean": 0.03553169837647268,
             "volatility": 0.05230486588942146,
             "sharpe_ratio": 0.6793191756115159,
-            "compound_return": 0.03467075386329959
+            "compound_return": 0.03467075386329959,
+            "costs": {
+              "daily": {
+                "rebalances": 4210,
+                "turnover_per_year": 0.2582868640404862,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.034670753863259324,
+                    "sharpe_ratio": 0.6793191756107702
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.03461730700698071,
+                    "sharpe_ratio": 0.6783288241950811
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.034403549879654896,
+                    "sharpe_ratio": 0.6743674497183473
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.034136421473828144,
+                    "sharpe_ratio": 0.6694158001623836
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.03333548508340496,
+                    "sharpe_ratio": 0.6545612461217082
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.03200206592530997,
+                    "sharpe_ratio": 0.6298047210682535
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 200,
+                "turnover_per_year": 0.05429980564765502,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.034027484829482,
+                    "sharpe_ratio": 0.6676907081829099
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.03401625554729009,
+                    "sharpe_ratio": 0.6674833751033862
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.03397134273393428,
+                    "sharpe_ratio": 0.6666540653645471
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.033915211397210224,
+                    "sharpe_ratio": 0.6656174786990914
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.033746881445219534,
+                    "sharpe_ratio": 0.6625080506962397
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.0334665420873238,
+                    "sharpe_ratio": 0.6573267477359032
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 3,
+                "turnover_per_year": 0.009721364654488373,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.03454602965501159,
+                    "sharpe_ratio": 0.6756993815549921
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.03454401835215748,
+                    "sharpe_ratio": 0.6756627243514932
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.034535975879547966,
+                    "sharpe_ratio": 0.675516095906187
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.03452592894689634,
+                    "sharpe_ratio": 0.6753328113266116
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.03449582913583902,
+                    "sharpe_ratio": 0.6747829664541112
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.03444579898865229,
+                    "sharpe_ratio": 0.6738666024976484
+                  }
+                ]
+              }
+            }
           }
         },
         "max_sharpe": {
@@ -457,7 +567,117 @@
             "mean": 0.04409689158731111,
             "volatility": 0.06904725353576853,
             "sharpe_ratio": 0.6386480175416045,
-            "compound_return": 0.04249263603966507
+            "compound_return": 0.04249263603966507,
+            "costs": {
+              "daily": {
+                "rebalances": 4210,
+                "turnover_per_year": 0.4795332727300072,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.04249263603964104,
+                    "sharpe_ratio": 0.6386480175412698
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.04239265885559567,
+                    "sharpe_ratio": 0.6372538959731885
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.041992846002209275,
+                    "sharpe_ratio": 0.6316774543302749
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.04149329526993842,
+                    "sharpe_ratio": 0.6247070008522767
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.03999607523503729,
+                    "sharpe_ratio": 0.6037963111415812
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.03750545873970309,
+                    "sharpe_ratio": 0.5689474462087082
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 200,
+                "turnover_per_year": 0.10212171833282897,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.04132333896506218,
+                    "sharpe_ratio": 0.620900931116253
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.041302070930605096,
+                    "sharpe_ratio": 0.6206062985809991
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.04121700501396556,
+                    "sharpe_ratio": 0.6194277299928073
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.04111068659546939,
+                    "sharpe_ratio": 0.6179544331361629
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.04079182340674139,
+                    "sharpe_ratio": 0.613533963793208
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.04026068990373736,
+                    "sharpe_ratio": 0.6061646279808629
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 7,
+                "turnover_per_year": 0.02446134434328848,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.041986435857807446,
+                    "sharpe_ratio": 0.6307652829610338
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.04198133832854826,
+                    "sharpe_ratio": 0.6306963353881188
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.041960951181330156,
+                    "sharpe_ratio": 0.6304205079819475
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.041935473924756696,
+                    "sharpe_ratio": 0.6300756404380203
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.04185908659714135,
+                    "sharpe_ratio": 0.6290404861048293
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.04173192206163413,
+                    "sharpe_ratio": 0.62731341196563
+                  }
+                ]
+              }
+            }
           }
         },
         "equal": {
@@ -478,7 +698,117 @@
             "mean": 0.0848691305214365,
             "volatility": 0.11595401363931171,
             "sharpe_ratio": 0.7319205938436224,
-            "compound_return": 0.08106448798139632
+            "compound_return": 0.08106448798139632,
+            "costs": {
+              "daily": {
+                "rebalances": 4210,
+                "turnover_per_year": 0.7411540446471987,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.08106448798139584,
+                    "sharpe_ratio": 0.7319205938436186
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.08090425269905199,
+                    "sharpe_ratio": 0.7306353209106953
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.0802635471114319,
+                    "sharpe_ratio": 0.7254943705089443
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.07946319462456505,
+                    "sharpe_ratio": 0.7190684992678126
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.07706565947139388,
+                    "sharpe_ratio": 0.6997929763042977
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.07308146121088048,
+                    "sharpe_ratio": 0.6676739447337278
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 200,
+                "turnover_per_year": 0.14906917699706887,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.07834639961420874,
+                    "sharpe_ratio": 0.7181095234290542
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.07831425046258603,
+                    "sharpe_ratio": 0.7178469701494049
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.07818566366251085,
+                    "sharpe_ratio": 0.7167967300550908
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.07802495221624783,
+                    "sharpe_ratio": 0.7154838695879745
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.07754296363691071,
+                    "sharpe_ratio": 0.7115448816899901
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.0767401282622731,
+                    "sharpe_ratio": 0.7049785311187768
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 7,
+                "turnover_per_year": 0.03720045563287432,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.08198994785780454,
+                    "sharpe_ratio": 0.7415827154956892
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.08198189778108719,
+                    "sharpe_ratio": 0.7415145803034959
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.08194969801590465,
+                    "sharpe_ratio": 0.7412419849761687
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.08190944952746443,
+                    "sharpe_ratio": 0.7409011182481187
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.08178871217028501,
+                    "sharpe_ratio": 0.7398777039457642
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.08158751019312954,
+                    "sharpe_ratio": 0.7381693185368938
+                  }
+                ]
+              }
+            }
           }
         }
       },
@@ -546,7 +876,117 @@
             "mean": 0.025993842735272256,
             "volatility": 0.05013500933070712,
             "sharpe_ratio": 0.518476870400248,
-            "compound_return": 0.02498871076192306
+            "compound_return": 0.02498871076192306,
+            "costs": {
+              "daily": {
+                "rebalances": 3456,
+                "turnover_per_year": 0.18135069419698904,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.024988710761918314,
+                    "sharpe_ratio": 0.5184768704001554
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.024951535110262674,
+                    "sharpe_ratio": 0.517751876065815
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.024802849099258038,
+                    "sharpe_ratio": 0.514851945181689
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.024617028784580122,
+                    "sharpe_ratio": 0.5112271339855524
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.024059813855792252,
+                    "sharpe_ratio": 0.5003533547142076
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.02313192746954817,
+                    "sharpe_ratio": 0.48223234338499993
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 164,
+                "turnover_per_year": 0.037887131858312474,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.024596803875470218,
+                    "sharpe_ratio": 0.5112934274338163
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.024589040248590193,
+                    "sharpe_ratio": 0.5111421750506594
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.024557989334676775,
+                    "sharpe_ratio": 0.5105372101316608
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.024519183752625802,
+                    "sharpe_ratio": 0.5097811039785513
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.024402820337805064,
+                    "sharpe_ratio": 0.5075134459928979
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.024209056560540797,
+                    "sharpe_ratio": 0.5037361790613684
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 2,
+                "turnover_per_year": 0.007808439089716835,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.02584482958339278,
+                    "sharpe_ratio": 0.5349542833673698
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.02584322766000589,
+                    "sharpe_ratio": 0.5349230858404691
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.025836822485195695,
+                    "sharpe_ratio": 0.5347983118558248
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.025828821679373698,
+                    "sharpe_ratio": 0.5346423807356028
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.0258048569418255,
+                    "sharpe_ratio": 0.5341748311150187
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.02576504086806689,
+                    "sharpe_ratio": 0.533396402485604
+                  }
+                ]
+              }
+            }
           }
         },
         "max_sharpe": {
@@ -567,7 +1007,117 @@
             "mean": 0.03049377849649942,
             "volatility": 0.06698476441820066,
             "sharpe_ratio": 0.4552345411879042,
-            "compound_return": 0.02858826052593889
+            "compound_return": 0.02858826052593889,
+            "costs": {
+              "daily": {
+                "rebalances": 3456,
+                "turnover_per_year": 0.4068690522131414,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.028588260525947946,
+                    "sharpe_ratio": 0.4552345411880359
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.028504563807439674,
+                    "sharpe_ratio": 0.4540159333715278
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.02816984545418357,
+                    "sharpe_ratio": 0.44914155552861934
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.02775160151325126,
+                    "sharpe_ratio": 0.4430487036971797
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.026497892524803508,
+                    "sharpe_ratio": 0.42477093996788134
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.02441176070596565,
+                    "sharpe_ratio": 0.39431053462878984
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 164,
+                "turnover_per_year": 0.08571176099909077,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.027486011584262737,
+                    "sharpe_ratio": 0.4387971807830554
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.027468398258225987,
+                    "sharpe_ratio": 0.43854103099458086
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.027397948970139082,
+                    "sharpe_ratio": 0.4375164205203126
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.027309896373547585,
+                    "sharpe_ratio": 0.4362356320387457
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.027045798312155134,
+                    "sharpe_ratio": 0.43239309864700126
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.026605831711944517,
+                    "sharpe_ratio": 0.42598832466524944
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 5,
+                "turnover_per_year": 0.020207377064494603,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.0288762542074834,
+                    "sharpe_ratio": 0.4606286283564558
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.02887209604955046,
+                    "sharpe_ratio": 0.4605677855161203
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.02885546381951415,
+                    "sharpe_ratio": 0.46032437765865536
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.028834674429788144,
+                    "sharpe_ratio": 0.4600200357981985
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.02877231215010794,
+                    "sharpe_ratio": 0.45910646453224724
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.028668394048684855,
+                    "sharpe_ratio": 0.4575820345196299
+                  }
+                ]
+              }
+            }
           }
         },
         "equal": {
@@ -588,7 +1138,117 @@
             "mean": 0.07700253159896468,
             "volatility": 0.11208988349085926,
             "sharpe_ratio": 0.6869712876920254,
-            "compound_return": 0.07309299785905753
+            "compound_return": 0.07309299785905753,
+            "costs": {
+              "daily": {
+                "rebalances": 3456,
+                "turnover_per_year": 0.7117896499918347,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.07309299785905707,
+                    "sharpe_ratio": 0.6869712876920219
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.0729402453135143,
+                    "sharpe_ratio": 0.685694725374265
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.07232945009991748,
+                    "sharpe_ratio": 0.6805886144180094
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.07156643930609483,
+                    "sharpe_ratio": 0.6742062855818423
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.06928062185330677,
+                    "sharpe_ratio": 0.6550613496428647
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.06548159534904505,
+                    "sharpe_ratio": 0.6231598042934113
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 164,
+                "turnover_per_year": 0.14196032155241203,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.07054252556936136,
+                    "sharpe_ratio": 0.67227404617105
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.07051213108367957,
+                    "sharpe_ratio": 0.6720157938089142
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.07039056166991142,
+                    "sharpe_ratio": 0.6709827599740319
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.07023861908358581,
+                    "sharpe_ratio": 0.6696914131332505
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.06978291772263653,
+                    "sharpe_ratio": 0.6658170019456449
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.0690238287403731,
+                    "sharpe_ratio": 0.6593583834062974
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 5,
+                "turnover_per_year": 0.03254854244842595,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.07437273975003152,
+                    "sharpe_ratio": 0.6908043788255614
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.07436574589840662,
+                    "sharpe_ratio": 0.6907467097600112
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.07433777052606645,
+                    "sharpe_ratio": 0.6905159758543099
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.07430280138639979,
+                    "sharpe_ratio": 0.690227428900682
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.07419789445487868,
+                    "sharpe_ratio": 0.6893609262551026
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.07402301521765994,
+                    "sharpe_ratio": 0.6879136062951786
+                  }
+                ]
+              }
+            }
           }
         }
       },
@@ -656,7 +1316,117 @@
             "mean": 0.02852637301880169,
             "volatility": 0.0535880753284485,
             "sharpe_ratio": 0.5323268813809737,
-            "compound_return": 0.027376375158728067
+            "compound_return": 0.027376375158728067,
+            "costs": {
+              "daily": {
+                "rebalances": 2700,
+                "turnover_per_year": 0.17776276619349948,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.027376375158709897,
+                    "sharpe_ratio": 0.5323268813806429
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.027339850118823568,
+                    "sharpe_ratio": 0.5316617346615388
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.027193766199951824,
+                    "sharpe_ratio": 0.5290011866847834
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.027011197722026443,
+                    "sharpe_ratio": 0.5256755876049748
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.02646373315090748,
+                    "sharpe_ratio": 0.5156993366612127
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.025552082964643372,
+                    "sharpe_ratio": 0.49907390838082055
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 128,
+                "turnover_per_year": 0.03667977910464894,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.026926477112792047,
+                    "sharpe_ratio": 0.524675866828686
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.026918943816247858,
+                    "sharpe_ratio": 0.5245388413784332
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.02688881443906541,
+                    "sharpe_ratio": 0.5239907858800537
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.02685116126326144,
+                    "sharpe_ratio": 0.5233058203304751
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.026738258314161906,
+                    "sharpe_ratio": 0.5212516101152148
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.026550272874577806,
+                    "sharpe_ratio": 0.5178301787660403
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 2,
+                "turnover_per_year": 0.009362437139229114,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.028078313562217832,
+                    "sharpe_ratio": 0.5433557619182483
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.028076388645332573,
+                    "sharpe_ratio": 0.5433210092256874
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.028068691913304234,
+                    "sharpe_ratio": 0.5431820185721417
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.028059077598131348,
+                    "sharpe_ratio": 0.5430083255964736
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.028030278571187714,
+                    "sharpe_ratio": 0.5424875501972984
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.027982426086901123,
+                    "sharpe_ratio": 0.5416206107114521
+                  }
+                ]
+              }
+            }
           }
         },
         "max_sharpe": {
@@ -677,7 +1447,117 @@
             "mean": 0.043799997200655374,
             "volatility": 0.06547876982362931,
             "sharpe_ratio": 0.6689190606151139,
-            "compound_return": 0.042405372295375096
+            "compound_return": 0.042405372295375096,
+            "costs": {
+              "daily": {
+                "rebalances": 2700,
+                "turnover_per_year": 0.39398176744428787,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.04240537229537881,
+                    "sharpe_ratio": 0.6689190606151686
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.042323237942025166,
+                    "sharpe_ratio": 0.6677112470509293
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.04199476826816095,
+                    "sharpe_ratio": 0.6628800275238365
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.04158433340036021,
+                    "sharpe_ratio": 0.6568410812433322
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.04035403871067506,
+                    "sharpe_ratio": 0.6387247356055197
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.03830689192893694,
+                    "sharpe_ratio": 0.6085324217029895
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 128,
+                "turnover_per_year": 0.082401994642451,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.0411451219022654,
+                    "sharpe_ratio": 0.6516845221847462
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.04112796378179004,
+                    "sharpe_ratio": 0.6514316020263807
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.04105933862388043,
+                    "sharpe_ratio": 0.6504199477728345
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.04097357363058983,
+                    "sharpe_ratio": 0.6491554393740724
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.04071638794684376,
+                    "sharpe_ratio": 0.645362311308572
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.040288106978026185,
+                    "sharpe_ratio": 0.6390417612255542
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 4,
+                "turnover_per_year": 0.023464034155907372,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.04404972270360629,
+                    "sharpe_ratio": 0.7009370739205532
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.044044823393974405,
+                    "sharpe_ratio": 0.7008665413137978
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.044025230435218395,
+                    "sharpe_ratio": 0.7005843682952806
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.044000748861731,
+                    "sharpe_ratio": 0.7002315565805824
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.0439273682352908,
+                    "sharpe_ratio": 0.6991724913810474
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.043805280386773136,
+                    "sharpe_ratio": 0.697405321322832
+                  }
+                ]
+              }
+            }
           }
         },
         "equal": {
@@ -698,7 +1578,117 @@
             "mean": 0.08884813798296776,
             "volatility": 0.11816521685675367,
             "sharpe_ratio": 0.7518975578970446,
-            "compound_return": 0.08502005593470387
+            "compound_return": 0.08502005593470387,
+            "costs": {
+              "daily": {
+                "rebalances": 2700,
+                "turnover_per_year": 0.7213336162428834,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.08502005593470355,
+                    "sharpe_ratio": 0.751897557897042
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.08486353487705801,
+                    "sharpe_ratio": 0.7506689904383615
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.08423767518587341,
+                    "sharpe_ratio": 0.7457548585554212
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.08345585529787457,
+                    "sharpe_ratio": 0.7396125027254108
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.08111375435581555,
+                    "sharpe_ratio": 0.7211874873961953
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.07722139652267127,
+                    "sharpe_ratio": 0.6904857996934971
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 128,
+                "turnover_per_year": 0.1416327733052242,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.08206427241300956,
+                    "sharpe_ratio": 0.7365113828466199
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.08203362171281828,
+                    "sharpe_ratio": 0.7362668683480853
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.08191102796121143,
+                    "sharpe_ratio": 0.7352887845227348
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.08175780612243193,
+                    "sharpe_ratio": 0.7340661218954412
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.08129827440527268,
+                    "sharpe_ratio": 0.7303977379198024
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.08053283027405594,
+                    "sharpe_ratio": 0.7242824462158393
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 3,
+                "turnover_per_year": 0.02175328528527739,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.08223892835010459,
+                    "sharpe_ratio": 0.7352659797536305
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.08223421999055322,
+                    "sharpe_ratio": 0.7352283160114996
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.0822153883697562,
+                    "sharpe_ratio": 0.7350776437575097
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.0821918529320977,
+                    "sharpe_ratio": 0.7348892646210956
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.08212127386141563,
+                    "sharpe_ratio": 0.7343238695923772
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.08200373280159716,
+                    "sharpe_ratio": 0.7333806931388945
+                  }
+                ]
+              }
+            }
           }
         }
       },
@@ -766,7 +1756,117 @@
             "mean": 0.028436343446211033,
             "volatility": 0.06075671209466384,
             "sharpe_ratio": 0.46803624596908616,
-            "compound_return": 0.02686349113346255
+            "compound_return": 0.02686349113346255,
+            "costs": {
+              "daily": {
+                "rebalances": 1946,
+                "turnover_per_year": 0.18782927946354713,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.02686349113350385,
+                    "sharpe_ratio": 0.46803624596975013
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.02682491703406152,
+                    "sharpe_ratio": 0.46741640041628285
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.02667063873527281,
+                    "sharpe_ratio": 0.4649370575265054
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.026477831347339737,
+                    "sharpe_ratio": 0.46183796410616773
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.02589967681570005,
+                    "sharpe_ratio": 0.4525412235468082
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.024936963661254703,
+                    "sharpe_ratio": 0.4370482747255858
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 92,
+                "turnover_per_year": 0.038746497041081844,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.026261597552219795,
+                    "sharpe_ratio": 0.45876978051586836
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.026253644953033846,
+                    "sharpe_ratio": 0.4586419982097178
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.026221838734612514,
+                    "sharpe_ratio": 0.45813091681998297
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.026182090336820375,
+                    "sharpe_ratio": 0.45749217236860695
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.026062907229476146,
+                    "sharpe_ratio": 0.4555766487715239
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.02586447307708652,
+                    "sharpe_ratio": 0.4523864410443647
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 1,
+                "turnover_per_year": 0.0064660159802209126,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.027660129280476623,
+                    "sharpe_ratio": 0.47678208048711673
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.02765880040933262,
+                    "sharpe_ratio": 0.4767614238848754
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.02765348696836286,
+                    "sharpe_ratio": 0.4766788140123444
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.027646849761725246,
+                    "sharpe_ratio": 0.4765755888947868
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.02762696871579206,
+                    "sharpe_ratio": 0.4762661619522144
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.027593935200598285,
+                    "sharpe_ratio": 0.4757512799895733
+                  }
+                ]
+              }
+            }
           }
         },
         "max_sharpe": {
@@ -787,7 +1887,117 @@
             "mean": 0.051630792898988344,
             "volatility": 0.07241051855020647,
             "sharpe_ratio": 0.7130289070252921,
-            "compound_return": 0.05007469740124294
+            "compound_return": 0.05007469740124294,
+            "costs": {
+              "daily": {
+                "rebalances": 1946,
+                "turnover_per_year": 0.4297740041111607,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.05007469740123046,
+                    "sharpe_ratio": 0.7130289070251279
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.04998444251372795,
+                    "sharpe_ratio": 0.711837683298522
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.049623504402291595,
+                    "sharpe_ratio": 0.707072816792684
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.04917251481727537,
+                    "sharpe_ratio": 0.7011167979978856
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.04782076215787034,
+                    "sharpe_ratio": 0.6832491602370727
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.04557186838464249,
+                    "sharpe_ratio": 0.6534710971439419
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 92,
+                "turnover_per_year": 0.0902084523920895,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.048469145185049876,
+                    "sharpe_ratio": 0.6935811855104842
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.04845022951249109,
+                    "sharpe_ratio": 0.6933300921228386
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.048374576480841314,
+                    "sharpe_ratio": 0.692325765662343
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.04828003189562844,
+                    "sharpe_ratio": 0.6910704636053668
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.04799654239655085,
+                    "sharpe_ratio": 0.6873052652744912
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.047524538013550416,
+                    "sharpe_ratio": 0.6810323006725015
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 4,
+                "turnover_per_year": 0.0324604014439624,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.0521916313334104,
+                    "sharpe_ratio": 0.7472497644063756
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.05218480073550549,
+                    "sharpe_ratio": 0.7471610182095623
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.0521574846352224,
+                    "sharpe_ratio": 0.7468059940161176
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.05212335365835086,
+                    "sharpe_ratio": 0.7463621255996548
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.052021054938704105,
+                    "sharpe_ratio": 0.7450299403369519
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.051850870409424425,
+                    "sharpe_ratio": 0.7428077469167892
+                  }
+                ]
+              }
+            }
           }
         },
         "equal": {
@@ -808,7 +2018,117 @@
             "mean": 0.10004723268608463,
             "volatility": 0.12963525661477626,
             "sharpe_ratio": 0.7717594371983596,
-            "compound_return": 0.09564080823829414
+            "compound_return": 0.09564080823829414,
+            "costs": {
+              "daily": {
+                "rebalances": 1946,
+                "turnover_per_year": 0.7607775237789457,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.09564080823829388,
+                    "sharpe_ratio": 0.7717594371983575
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.0954741130990183,
+                    "sharpe_ratio": 0.7705785781551279
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.09480758528825013,
+                    "sharpe_ratio": 0.7658552627456989
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.09397499377745332,
+                    "sharpe_ratio": 0.759951389694644
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.0914810016708226,
+                    "sharpe_ratio": 0.7422415766526154
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.08733689444841496,
+                    "sharpe_ratio": 0.7127310473944134
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 92,
+                "turnover_per_year": 0.14763178776432492,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.09196676857634975,
+                    "sharpe_ratio": 0.7537162725843806
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.09193452721947062,
+                    "sharpe_ratio": 0.7534829366390668
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.09180557067723026,
+                    "sharpe_ratio": 0.7525495702070437
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.09164439498216526,
+                    "sharpe_ratio": 0.7513828114311594
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.09116099856904672,
+                    "sharpe_ratio": 0.7478821818556257
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.09035576841644279,
+                    "sharpe_ratio": 0.7420466124493938
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 4,
+                "turnover_per_year": 0.04583275352437618,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.09949081550970983,
+                    "sharpe_ratio": 0.7919994867860275
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.09948073707464401,
+                    "sharpe_ratio": 0.7919292670776377
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.09944042539873184,
+                    "sharpe_ratio": 0.7916483300846799
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.09939004044624113,
+                    "sharpe_ratio": 0.7912970281694537
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.09923891649988907,
+                    "sharpe_ratio": 0.7902422542196892
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.0989870809408594,
+                    "sharpe_ratio": 0.7884809775134137
+                  }
+                ]
+              }
+            }
           }
         }
       },
@@ -876,7 +2196,117 @@
             "mean": 0.00745464404823056,
             "volatility": 0.06263040283651193,
             "sharpe_ratio": 0.11902596359933826,
-            "compound_return": 0.005481022057283964
+            "compound_return": 0.005481022057283964,
+            "costs": {
+              "daily": {
+                "rebalances": 1189,
+                "turnover_per_year": 0.15706452872069881,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.005481022057282521,
+                    "sharpe_ratio": 0.11902596359931539
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.005449437651337267,
+                    "sharpe_ratio": 0.1185218003998684
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.005323113496540367,
+                    "sharpe_ratio": 0.11650519025925143
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.0051652385012956855,
+                    "sharpe_ratio": 0.1139845221109418
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.004691813065928261,
+                    "sharpe_ratio": 0.10642312365075943
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.003903423329513562,
+                    "sharpe_ratio": 0.09382263826210642
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 56,
+                "turnover_per_year": 0.030101385091107796,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.0050155358228483205,
+                    "sharpe_ratio": 0.11160078390089702
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.005009485545962908,
+                    "sharpe_ratio": 0.11150416526295993
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.004985288334868127,
+                    "sharpe_ratio": 0.1111177453265655
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.004955050567646728,
+                    "sharpe_ratio": 0.11063484300032952
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.004864395251602852,
+                    "sharpe_ratio": 0.10918694867601264
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.0047134943133635195,
+                    "sharpe_ratio": 0.10677647134041438
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 1,
+                "turnover_per_year": 0.010722345183843048,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.007308549829709146,
+                    "sharpe_ratio": 0.1481071073603061
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.007306389856671405,
+                    "sharpe_ratio": 0.14807274197834036
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.0072977533423549115,
+                    "sharpe_ratio": 0.14793532845526713
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.007286965293638171,
+                    "sharpe_ratio": 0.14776366953215772
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.007254651680360518,
+                    "sharpe_ratio": 0.147249412151725
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.007200963509742273,
+                    "sharpe_ratio": 0.14639471143948274
+                  }
+                ]
+              }
+            }
           }
         },
         "max_sharpe": {
@@ -897,7 +2327,117 @@
             "mean": 0.029269667097118365,
             "volatility": 0.08240643878845691,
             "sharpe_ratio": 0.35518665200732247,
-            "compound_return": 0.026074204806925832
+            "compound_return": 0.026074204806925832,
+            "costs": {
+              "daily": {
+                "rebalances": 1189,
+                "turnover_per_year": 0.49230192625736324,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.026074204806918445,
+                    "sharpe_ratio": 0.35518665200723504
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.025973182208038438,
+                    "sharpe_ratio": 0.35398510312643316
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.025569193026840638,
+                    "sharpe_ratio": 0.3491789402732589
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.025064434108498908,
+                    "sharpe_ratio": 0.34317131076273744
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.023551669089073708,
+                    "sharpe_ratio": 0.3251488945337477
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.021035401006447275,
+                    "sharpe_ratio": 0.2951129858237704
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 56,
+                "turnover_per_year": 0.09531382614725614,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.024410695820494748,
+                    "sharpe_ratio": 0.3358709665243651
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.024391168190137563,
+                    "sharpe_ratio": 0.335637815882227
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.024313067068998787,
+                    "sharpe_ratio": 0.3347052699396148
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.02421546179826572,
+                    "sharpe_ratio": 0.3335397150152841
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.023922786538306328,
+                    "sharpe_ratio": 0.3300439017940106
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.02343546095564423,
+                    "sharpe_ratio": 0.32422039441329514
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 2,
+                "turnover_per_year": 0.026574407516321875,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.027847501177538574,
+                    "sharpe_ratio": 0.3759579276969703
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.02784203824571432,
+                    "sharpe_ratio": 0.37589339447716086
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.02782018563406376,
+                    "sharpe_ratio": 0.3756352151329776
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.02779286787379675,
+                    "sharpe_ratio": 0.37531238649818405
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.027710901193661104,
+                    "sharpe_ratio": 0.37434320569440516
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.027574244802824013,
+                    "sharpe_ratio": 0.37272559716832376
+                  }
+                ]
+              }
+            }
           }
         },
         "equal": {
@@ -918,7 +2458,117 @@
             "mean": 0.06535818865336104,
             "volatility": 0.12321391590926847,
             "sharpe_ratio": 0.5304448622628724,
-            "compound_return": 0.05915225679067758
+            "compound_return": 0.05915225679067758,
+            "costs": {
+              "daily": {
+                "rebalances": 1189,
+                "turnover_per_year": 0.7268294103879225,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.05915225679067725,
+                    "sharpe_ratio": 0.5304448622628696
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.058998303475020365,
+                    "sharpe_ratio": 0.5292582051837462
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.05838271587633748,
+                    "sharpe_ratio": 0.5245116142783793
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.057613738738491065,
+                    "sharpe_ratio": 0.518578459238574
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.055310184840321526,
+                    "sharpe_ratio": 0.5007795515397482
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.05148214112995064,
+                    "sharpe_ratio": 0.4711164457499542
+                  }
+                ]
+              },
+              "monthly": {
+                "rebalances": 56,
+                "turnover_per_year": 0.1383732900520996,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.05631649123973623,
+                    "sharpe_ratio": 0.5096853588313507
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.0562872584421381,
+                    "sharpe_ratio": 0.5094590149079624
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.05617033525090978,
+                    "sharpe_ratio": 0.5085536190270533
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.05602419925196481,
+                    "sharpe_ratio": 0.5074218289423693
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.05558591106063275,
+                    "sharpe_ratio": 0.5040261601393698
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.05485582929155499,
+                    "sharpe_ratio": 0.49836573577465676
+                  }
+                ]
+              },
+              "band:0.05": {
+                "rebalances": 2,
+                "turnover_per_year": 0.03192630058150263,
+                "costs": [
+                  {
+                    "cost": 0.0,
+                    "compound_return": 0.06019737296787854,
+                    "sharpe_ratio": 0.5428077321131441
+                  },
+                  {
+                    "cost": 0.0001,
+                    "compound_return": 0.060190603470835845,
+                    "sharpe_ratio": 0.5427547224796089
+                  },
+                  {
+                    "cost": 0.0005,
+                    "compound_return": 0.06016352826153435,
+                    "sharpe_ratio": 0.5425426755998914
+                  },
+                  {
+                    "cost": 0.001,
+                    "compound_return": 0.060129690501028205,
+                    "sharpe_ratio": 0.5422775983269491
+                  },
+                  {
+                    "cost": 0.0025,
+                    "compound_return": 0.060028218872299345,
+                    "sharpe_ratio": 0.5414822436861787
+                  },
+                  {
+                    "cost": 0.005,
+                    "compound_return": 0.05985923820042082,
+                    "sharpe_ratio": 0.540156253612062
+                  }
+                ]
+              }
+            }
           }
         }
       },

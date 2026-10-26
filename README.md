@@ -5,8 +5,8 @@ daily market data.
 
 > **Status:** in progress. The data ingestion, the returns and covariance
 > engine, the Monte Carlo simulation, the risk measures, the scenario engine,
-> the mean-variance optimiser, the factor attribution, and risk parity and
-> minimum CVaR are done; the parts below are built in order, and every figure
+> the mean-variance optimiser, the factor attribution, risk parity and
+> minimum CVaR, and trading costs are done; the parts below are built in order, and every figure
 > this README gives comes from a run of the committed code.
 
 ## The data is real
@@ -847,9 +847,10 @@ along the frontier (21).
 look better than they are. So the command also chooses the minimum-variance
 and tangency portfolios, and equal weights to compare, from the returns up to
 each split date, holds them after it rebalanced daily, and reports what they
-returned beside what the optimiser expected. `--split` may be given more than
-once; by default the splits are the ends of 2009, 2012, 2015, 2018 and 2021
-(`none` for none).
+returned beside what the optimiser expected, and what each would have returned
+after trading costs (see [After trading costs](#after-trading-costs)).
+`--split` may be given more than once; by default the splits are the ends of
+2009, 2012, 2015, 2018 and 2021 (`none` for none).
 
 ### Results
 
@@ -918,8 +919,8 @@ What they show:
 The held periods overlap (every one includes 2022 to 2026), so the five splits
 are five views of one history, not five independent trials. The ratios above
 take a zero risk-free rate, which flatters every portfolio and the least
-volatile most; the next section measures them against the bill. Nothing here
-charges trading costs.
+volatile most; the next section measures them against the bill. These tables
+charge no trading costs; [After trading costs](#after-trading-costs) does.
 
 ### Against the Treasury bill
 
@@ -979,6 +980,52 @@ realised, against the bill:
   before a split, against 50.5% to 61.8% at a zero rate. Capped, they hold
   AGG at or near the cap either way (30% after four splits, 28.4% after 2021
   against 30%).
+
+### After trading costs
+
+Held after a split, each portfolio above is rebalanced to its weights every
+close, the rule that trades the most, and the tables so far charge nothing
+for it. The command also charges each held portfolio through
+[`costs.py`](src/portfolio_risk/costs.py) at the cost section's levels (0 to
+50 bp one way, the same for every fund), held three ways: every close, at
+each month's last close, and whenever a fund drifts more than 5 points from
+its target (`realised.costs` in the files). As there, the costs are levels to
+read the results at, not measurements, and the purchase at the split's close
+is not charged.
+
+What each portfolio trades a year, one way, and what a 10 bp cost takes off
+its compound return a year, over the five splits:
+
+| Portfolio | Turnover, every close | 10 bp takes | Turnover, monthly | 10 bp takes | Turnover, 5-point band | 10 bp takes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Minimum variance | 15.7-25.8% | 0.032-0.053 pt | 3.0-5.4% | 0.006-0.011 pt | 0.6-1.1% | 0.001-0.002 pt |
+| Tangency | 39.4-49.2% | 0.082-0.101 pt | 8.2-10.2% | 0.017-0.021 pt | 2.0-3.2% | 0.004-0.007 pt |
+| Minimum variance, 30% cap | 57.2-61.9% | 0.121-0.132 pt | 11.3-12.4% | 0.023-0.026 pt | 4.1-5.2% | 0.009-0.011 pt |
+| Tangency, 30% cap | 57.4-61.9% | 0.121-0.132 pt | 11.2-12.6% | 0.023-0.026 pt | 3.1-5.4% | 0.006-0.012 pt |
+| Equal weight | 71.2-76.1% | 0.153-0.167 pt | 13.8-14.9% | 0.029-0.032 pt | 2.2-4.6% | 0.005-0.010 pt |
+
+Comparing the portfolios held under the same rule at the same cost:
+
+- **No comparison above changes at any cost held every close or monthly**,
+  against a zero rate or the bill. Every optimised portfolio still falls
+  short of the ratio it expected (20 of 20; 19 of 20 against the bill), equal
+  weight still has a higher ratio than the uncapped minimum-variance and
+  tangency portfolios and the highest compound return after every split, and
+  the capped minimum-variance portfolio beats equal weight after the same
+  splits (2009, 2012 and 2015; against the bill, 2009). Equal weight trades
+  the most, but its smallest lead over the better uncapped portfolio, after
+  2009, is still 0.038 at 50 bp held every close (0.053 at no cost).
+- **Under the 5-point band one comparison changes, and not because of the
+  costs:** the capped tangency portfolio beats equal weight after 2018 as
+  well as 2015, at every cost from none (0.797 against 0.792) to 50 bp (0.791
+  against 0.788). Held every close it fell just short after 2018 (0.770
+  against 0.772). Against the bill nothing changes under the band either.
+- **The band is the cheapest rule and mostly the best.** Of the 15 held
+  portfolios of each run (five splits, three portfolios, capped or not), it
+  gives the highest Sharpe ratio of the three rules to 12 at no cost (every
+  close to the other 3), 14 at 10 bp and all 15 at 50 bp; against the bill
+  11, 13 and 15. Monthly is never the best: at no cost its ratio is below
+  every close's for every portfolio and split, here and in the next section.
 
 ## Factor attribution
 
@@ -1209,8 +1256,37 @@ What they show:
   as the frontier section found for its three: the low-risk portfolios held
   mostly AGG, which returned 2.32% a year after 2009 and -0.64% after 2021.
 
-The held periods overlap, so the five splits are five views of one history,
-and nothing here charges trading costs.
+The held periods overlap, so the five splits are five views of one history.
+These tables charge no trading costs.
+
+**After trading costs**, each held portfolio charged as in the frontier
+section (`held.costs` in the files), what the three not there trade a year,
+one way, and what 10 bp takes off their compound return a year:
+
+| Portfolio | Turnover, every close | 10 bp takes | Turnover, monthly | 10 bp takes | Turnover, 5-point band | 10 bp takes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Inverse volatility | 61.0-65.8% | 0.129-0.140 pt | 12.0-13.2% | 0.025-0.028 pt | 2.4-4.4% | 0.005-0.009 pt |
+| Risk parity | 56.5-61.5% | 0.118-0.130 pt | 11.3-12.2% | 0.023-0.026 pt | 2.7-4.7% | 0.006-0.010 pt |
+| Minimum CVaR | 12.9-23.1% | 0.026-0.048 pt | 2.4-5.0% | 0.005-0.010 pt | 0.9-1.5% | 0.002-0.003 pt |
+
+Comparing the six held under the same rule at the same cost, by Sharpe
+ratio and compound return (volatility, CVaR and drawdown above stay before
+costs):
+
+- **These stand under every rule at every cost:** inverse volatility above
+  risk parity after every split; minimum CVaR above minimum variance after
+  2009 to 2018, not after 2021; equal weight first after 2018 and 2021; and
+  no construction above equal weight's compound return after any split.
+- **Which portfolio comes first after 2009, 2012 and 2015 depends on the
+  rule and the cost.** Held every close, inverse volatility led equal weight
+  after 2015 by 0.003 (0.755 against 0.752), and from 25 bp it no longer
+  does (0.719 against 0.721). At 50 bp equal weight also passes it after
+  2012 (0.623 against 0.622), minimum CVaR comes first after 2009 (0.738
+  against inverse volatility's 0.732), and risk parity no longer beats equal
+  weight after 2009 (0.665 against 0.668). Held monthly, equal weight is
+  first after 2015 at every cost, from none (0.737 against 0.736); within the
+  band, minimum CVaR is first after 2009 at every cost, from none (0.798
+  against 0.794).
 
 **Against the Treasury bill**, over the days the factor cache covers (to 31
 August 2026, a month shorter than above), the tangency portfolio chosen at
@@ -1248,6 +1324,10 @@ zero rate made with the same command at a zero rate on the same days
   after four of the five splits, not after 2021 (-0.43 against -0.40).
 - After 2021, when the bill averaged 3.93% a year, risk parity, minimum
   variance and minimum CVaR had mean returns below the bill's.
+- **After trading costs none of these comparisons changes**, under any of the
+  three rules at any cost up to 50 bp: which portfolio comes first after each
+  split, inverse volatility over risk parity, risk parity never over equal
+  weight, and minimum CVaR over minimum variance after four of the five.
 
 ## Parts
 
@@ -1258,9 +1338,9 @@ zero rate made with the same command at a zero rate on the same days
 | Monte Carlo: multivariate normal, Student-t, stationary block bootstrap | done |
 | Risk metrics: Sharpe, Sortino, drawdown, VaR, CVaR, downside deviation | done |
 | Scenarios: allocation mixes, rebalancing, stress periods | done |
-| Efficient frontier and mean-variance optimiser, held out of sample | done |
+| Efficient frontier and mean-variance optimiser, held out of sample, before and after trading costs | done |
 | Fama-French factor attribution (Ken French data library), ratios against the bill rate | done |
-| Risk parity and CVaR optimisation, compared out of sample | done |
+| Risk parity and CVaR optimisation, compared out of sample, before and after trading costs | done |
 | Cost-aware backtest: transaction costs, spreads (assumed, and a measured floor), rebalancing drag | done |
 | Spread estimates from daily highs and lows (Abdi-Ranaldo, Corwin-Schultz), tested by simulation: they cannot measure these funds' spreads | done |
 | Tableau extracts, dashboard spec and Plotly reproduction | to come |
