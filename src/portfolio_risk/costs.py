@@ -443,6 +443,8 @@ def held(
     vary.
     """
     tickers = [str(t) for t in returns.columns]
+    if isinstance(rules, str):
+        raise ValueError(f"rules are a list of rules, such as [{rules!r}]")
     if not rules or not levels:
         raise ValueError("needs at least one rule and one cost")
     if len({scenarios._rule_key(rule) for rule in rules}) != len(rules):
@@ -450,9 +452,17 @@ def held(
     if len(set(levels)) != len(levels):
         raise ValueError("a cost is given twice")
     per_level = [per_unit(level, 0.0, tickers) for level in levels]
+    if len(returns) and not pd.Timestamp(first_close) < returns.index[0]:
+        raise ValueError(
+            f"the portfolio is bought at a close before its first return "
+            f"({returns.index[0].date()}), not on {pd.Timestamp(first_close).date()}"
+        )
+    days = ret.TRADING_DAYS_PER_YEAR
+    # Checked here: the Sharpe ratio's own refusals give None, which is for returns that
+    # leave it undefined, not for a rate that is wrong.
+    risk.per_period_rates(risk_free, pd.Series(0.0, index=returns.index), days)
     per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *returns.index]))
     years = len(returns) / per_year
-    days = ret.TRADING_DAYS_PER_YEAR
     out: dict[str, Any] = {}
     for rule in rules:
         test = backtest(returns, weights, rule)

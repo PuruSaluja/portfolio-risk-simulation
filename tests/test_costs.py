@@ -291,6 +291,42 @@ def test_held_refuses_bad_rules_and_costs(rules, levels, message) -> None:
         costs.held(returns, {"F0": 1.0}, returns.index[0], rules=rules, levels=levels)
 
 
+def test_held_refuses_a_bad_rate_rather_than_giving_no_ratio() -> None:
+    # Regression: a rate off the returns' dates, short of them or not a number reached
+    # the Sharpe ratio, whose refusal became None, as for returns that never vary.
+    returns = frame(days=30)
+    first = returns.index[0] - pd.Timedelta(days=3)
+    weights = {"F0": 0.5, "F1": 0.5}
+    good = pd.Series(0.0001, index=returns.index)
+    for rate, message in [
+        (good.set_axis(returns.index + pd.Timedelta(days=1)), "on the returns' dates"),
+        (good.iloc[:-1], "on the returns' dates"),
+        (good.where(good.index != good.index[4]), "finite"),
+        (math.nan, "finite"),
+        (-1.0, "above -100%"),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            costs.held(returns, weights, first, rate, levels=[0.0])
+
+
+def test_held_needs_its_first_close_before_the_returns_and_a_list_of_rules() -> None:
+    returns = frame(days=30)
+    for first in (returns.index[0], returns.index[5]):
+        with pytest.raises(ValueError, match="bought at a close before its first return"):
+            costs.held(returns, {"F0": 1.0}, first, levels=[0.0])
+    with pytest.raises(ValueError, match=r"a list of rules, such as \['daily'\]"):
+        costs.held(returns, {"F0": 1.0}, returns.index[0] - pd.Timedelta(days=1), rules="daily")
+
+
+def test_print_held_shows_a_ratio_left_undefined_as_a_dash(capsys) -> None:
+    returns = pd.DataFrame(0.0, index=pd.bdate_range("2024-01-01", periods=10), columns=["A"])
+    out = costs.held(returns, {"A": 1.0}, returns.index[0] - pd.Timedelta(days=3), levels=[0.0])
+    costs.print_held({"flat": out})
+    printed = capsys.readouterr().out
+    assert "0 bp" in printed and "flat" in printed
+    assert printed.splitlines()[-1].split()[-1] == "-"
+
+
 def gap(returns, weights, rules, k):
     first, second = (costs.trades(backtest(returns, weights, r), returns) for r in rules)
     return annualised_return(costs.net_returns(first, k), 252) - annualised_return(
