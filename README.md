@@ -6,8 +6,9 @@ daily market data.
 > **Status:** in progress. The data ingestion, the returns and covariance
 > engine, the Monte Carlo simulation, the risk measures, the scenario engine,
 > the mean-variance optimiser, the factor attribution, risk parity and
-> minimum CVaR, and trading costs are done; the parts below are built in order, and every figure
-> this README gives comes from a run of the committed code.
+> minimum CVaR, and trading costs are done; the parts below are built in
+> order, and every figure this README gives comes from a run of the committed
+> code.
 
 ## The data is real
 
@@ -1009,8 +1010,9 @@ its compound return a year, over the five splits:
 Comparing the portfolios held under the same rule at the same cost:
 
 - **No comparison above changes at any cost held every close or monthly**,
-  against a zero rate or the bill. Every optimised portfolio still falls
-  short of the ratio it expected (20 of 20; 19 of 20 against the bill), equal
+  against a zero rate or the bill. The optimised portfolios fall short of the
+  ratio they expected as often as before costs (20 of 20; against the bill,
+  19 of 20), equal
   weight still has a higher ratio than the uncapped minimum-variance and
   tangency portfolios and the highest compound return after every split, and
   the capped minimum-variance portfolio beats equal weight after the same
@@ -1026,8 +1028,11 @@ Comparing the portfolios held under the same rule at the same cost:
   portfolios of each run (five splits, three portfolios, capped or not), it
   gives the highest Sharpe ratio of the three rules to 12 at no cost (every
   close to the other 3), 14 at 10 bp and all 15 at 50 bp; against the bill
-  11, 13 and 15. Monthly is never the best: at no cost its ratio is below
-  every close's for every portfolio and split, here and in the next section.
+  11, 13 and 15. Monthly is never the best, at any cost: up to 10 bp its
+  ratio is below every close's for every portfolio and split, and from 25 bp
+  above it, here and for the six portfolios of risk parity and minimum CVaR
+  below (but one: risk parity held after 2018 against the bill, 0.3705
+  against 0.3706 at 25 bp).
 
 ## Factor attribution
 
@@ -1262,8 +1267,9 @@ The held periods overlap, so the five splits are five views of one history.
 These tables charge no trading costs.
 
 **After trading costs**, each held portfolio charged as in the frontier
-section (`held.costs` in the files), what the three not there trade a year,
-one way, and what 10 bp takes off their compound return a year:
+section (`held.costs` in the files): what the three portfolios that section
+does not have trade a year, one way, and what 10 bp takes off their compound
+return a year:
 
 | Portfolio | Turnover, every close | 10 bp takes | Turnover, monthly | 10 bp takes | Turnover, 5-point band | 10 bp takes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |

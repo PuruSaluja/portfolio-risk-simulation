@@ -471,7 +471,8 @@ def simulate(
         n = min(BLOCK, paths - i * BLOCK)
         # A whole block is drawn even when fewer paths are left: the t and bootstrap
         # models draw two arrays from the stream, so drawing fewer paths would move
-        # where the second starts, and change every path of the block.
+        # where the second starts, and change the block's paths (every one for the t,
+        # any whose blocks of days break differently for the bootstrap).
         funds = model.sample(np.random.default_rng(child), BLOCK, horizon)[:n]
         out[i * BLOCK : i * BLOCK + n] = funds @ w
     return Simulation(model.name, seed, dict(zip(model.tickers, w.tolist(), strict=True)), out)
