@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import date
 from pathlib import Path
 
@@ -183,6 +184,55 @@ def gap(returns, weights, rules, k):
     return annualised_return(costs.net_returns(first, k), 252) - annualised_return(
         costs.net_returns(second, k), 252
     )
+
+
+@pytest.mark.parametrize("rule", ["daily", "monthly", "yearly", "band:0.03"])
+@pytest.mark.parametrize("highest", [0.01, costs.HIGHEST])
+def test_the_compound_return_falls_no_faster_than_its_bound(rule, highest) -> None:
+    for seed in range(3):
+        returns = frame(days=500, funds=4, seed=seed, scale=0.02)
+        weights = {"F0": 0.1, "F1": 0.2, "F2": 0.3, "F3": 0.4}
+        made = costs.trades(backtest(returns, weights, rule), returns)
+        bound = costs.fall_bound(made, 252, highest)
+        k = np.linspace(0.0, highest, 401)
+        compound = np.array([annualised_return(costs.net_returns(made, x), 252) for x in k])
+        steepest = float(np.max(-np.diff(compound) / np.diff(k)))
+        assert 0.0 < steepest <= bound
+        # Close to the steepest fall near no cost, so the search's steps are not tiny.
+        assert bound <= 1.35 * steepest
+
+
+def test_the_first_crossing_is_found_where_a_scan_would_step_over_it() -> None:
+    # A lead that dips below zero for less than a tenth of a basis point around 1.5 bp,
+    # and falls no faster than 200 per unit of cost.
+    def gap(k):
+        return 1e-4 - 2e-4 * math.exp(-(((k - 1.5e-4) / 1e-6) ** 2))
+
+    assert gap(1e-4) > 0 and gap(2e-4) > 0  # a basis-point scan sees a lead throughout
+    found = costs.first_crossing(gap, gap(0.0), 200.0, 0.01)
+    assert found == pytest.approx(1.5e-4 - math.sqrt(math.log(2)) * 1e-6, abs=1e-15)
+    assert gap(found) <= 0.0 < gap(np.nextafter(found, 0.0))
+
+
+def test_the_search_steps_no_further_than_the_lead_allows() -> None:
+    # A lead falling at half the bound, then at the bound itself to 0 at 1.75e-3, then
+    # back above 0 from 1.975e-3: a step longer than lead / slope, or one that is not
+    # shortened as the lead shrinks, lands past the crossing on a lead and misses it.
+    def gap(k):
+        if k < 1.5e-3:
+            return 1e-3 - 0.5 * k
+        if k < 1.9e-3:
+            return 2.5e-4 - (k - 1.5e-3)
+        return -1.5e-4 + 2.0 * (k - 1.9e-3)
+
+    assert costs.first_crossing(gap, 1e-3, 1.0, 0.01) == pytest.approx(1.75e-3, abs=1e-15)
+
+
+def test_the_first_crossing_is_none_where_the_gap_never_closes() -> None:
+    assert costs.first_crossing(lambda k: 1e-3 - k, 1e-3, 1.0, 0.0005) is None
+    assert costs.first_crossing(lambda k: 1e-3, 1e-3, 0.0, 0.01) is None
+    # Closing exactly at the highest cost counts.
+    assert costs.first_crossing(lambda k: 0.01 - k, 0.01, 1.0, 0.01) == 0.01
 
 
 def test_breakeven_is_where_the_lead_is_gone() -> None:

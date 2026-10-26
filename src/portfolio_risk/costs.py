@@ -26,7 +26,15 @@ The purchase at the first close is not charged: the backtests start invested, an
 is the same for every rule. Distributions are reinvested free, as in the total returns.
 
 ``breakeven`` gives the one-way cost, the same for every fund, at which two rules'
-compound returns after costs are equal.
+compound returns after costs are equal: the lowest one, not just one. As the cost
+``k`` rises the second rule's return falls, so the first's lead falls no faster than
+the first's return, and that is bounded. With the portfolio worth 1 before a trade and
+``tau = sum |w - d|`` traded, the sum ``A = sum |w v - d|`` is at most ``tau + (1 - v)``
+and ``1 - v = k A``, so ``A <= tau / (1 - k)``; then ``dv/dk = -A / (1 + k sum s w)``
+gives ``|d log v / dk| <= tau / ((1 - k)(1 - k - k tau))``. Summed over the trades and
+scaled as the compound return is, that bounds how fast the return can fall
+(``fall_bound``). A lead of ``g`` cannot be gone within ``g`` over that bound, so the
+search steps that far each time and cannot step over a crossing.
 
 ``python -m portfolio_risk.costs`` backtests the scenario mixes under every rule over
 the cache's daily total returns at a few one-way costs, and gives the break-even cost
@@ -40,7 +48,7 @@ import argparse
 import json
 import math
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -64,8 +72,9 @@ from portfolio_risk.scenarios import Backtest, backtest
 # The highest one-way cost per unit traded anything here accepts: 10%, far above any
 # fund's, and far enough below 1 that Newton's slope stays positive.
 HIGHEST = 0.1
-# ``breakeven`` scans the costs in steps of a basis point before narrowing down.
-SCAN_STEP = 1e-4
+# The shortest step ``breakeven``'s search takes, a thousandth of a basis point: a lead
+# that comes and goes within less is not looked for.
+RESOLUTION = 1e-7
 
 
 def per_unit(
@@ -168,6 +177,49 @@ def summarise(trades: Trades, cost: float | np.ndarray, periods_per_year: float)
     }
 
 
+def fall_bound(trades: Trades, periods_per_year: float, highest: float) -> float:
+    """How fast, at most, the compound return falls per unit of one-way cost (the same
+    for every fund), anywhere from no cost to ``highest`` (see above)."""
+    tau = 2.0 * trades.turnover
+    per_trade = tau / ((1.0 - highest) * (1.0 - highest - highest * tau))
+    growth = 1.0 + float(ret.annualised_return(trades.gross, periods_per_year))
+    return growth * periods_per_year / len(trades.gross) * float(per_trade.sum())
+
+
+def first_crossing(
+    gap: Callable[[float], float], lead: float, slope: float, highest: float
+) -> float | None:
+    """The lowest cost up to ``highest`` at which ``gap`` falls to 0 or below, given that
+    it is ``lead`` (above 0) at no cost and falls no faster than ``slope``; ``None`` if
+    it never does.
+
+    From a cost where the gap is ``g`` it cannot reach 0 within ``g / slope``, so the
+    search steps that far (at least ``RESOLUTION``), and the step on which the gap is
+    gone is narrowed down by bisection to a last bit.
+    """
+    if slope <= 0.0:
+        # It does not fall at all.
+        return None
+    low, value = 0.0, lead
+    while True:
+        high = min(low + max(value / slope, RESOLUTION), highest)
+        now = gap(high)
+        if now <= 0.0:
+            break
+        if high >= highest:
+            return None
+        low, value = high, now
+    while True:
+        middle = (low + high) / 2.0
+        if not low < middle < high:
+            break
+        if gap(middle) > 0.0:
+            low = middle
+        else:
+            high = middle
+    return high
+
+
 def breakeven(
     returns: pd.DataFrame,
     weights: Mapping[str, float],
@@ -180,8 +232,8 @@ def breakeven(
 
     ``gap`` is the first's lead before costs, in compound return a year. ``cost`` is
     ``None`` when the first does not lead before costs, or still leads at ``highest``.
-    The costs are scanned a basis point at a time, and the first step at which the
-    lead is gone is narrowed down by bisection to a last bit.
+    The lead falls no faster than the first rule's return (the second's falls too), so
+    ``first_crossing`` searches with the first's ``fall_bound``.
     """
     if len(rules) != 2:
         raise ValueError(f"needs two rules to compare, not {list(rules)!r}")
@@ -197,25 +249,9 @@ def breakeven(
 
     lead = gap(0.0)
     out = {"rules": list(rules), "gap": lead, "highest": highest, "cost": None}
-    if lead <= 0.0:
-        return out
-    low = 0.0
-    for high in np.arange(1, round(highest / SCAN_STEP) + 1) * SCAN_STEP:
-        if gap(float(high)) <= 0.0:
-            break
-        low = float(high)
-    else:
-        return out
-    high = float(high)
-    while True:
-        middle = (low + high) / 2.0
-        if not low < middle < high:
-            break
-        if gap(middle) > 0.0:
-            low = middle
-        else:
-            high = middle
-    out["cost"] = high
+    if lead > 0.0:
+        slope = fall_bound(first, periods_per_year, highest)
+        out["cost"] = first_crossing(gap, lead, slope, highest)
     return out
 
 
