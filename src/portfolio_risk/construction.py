@@ -285,19 +285,6 @@ def describe(
     }
 
 
-def _sides(daily: pd.DataFrame, split: date) -> tuple[pd.DataFrame, pd.DataFrame]:
-    before = daily.loc[daily.index <= pd.Timestamp(split)]
-    after = daily.loc[daily.index > pd.Timestamp(split)]
-    funds = daily.shape[1]
-    # A covariance matrix of n funds needs more than n days to be positive definite.
-    if min(len(before), len(after)) <= funds:
-        raise ValueError(
-            f"a split on {split.isoformat()} leaves returns on {len(before)} days before it "
-            f"and {len(after)} after; each side needs more than {funds}, one per fund"
-        )
-    return before, after
-
-
 def _held_out(
     daily: pd.DataFrame,
     split: date,
@@ -307,7 +294,7 @@ def _held_out(
     level: float,
 ) -> dict[str, Any]:
     """The six portfolios chosen from the returns up to ``split`` and held after it."""
-    before, after = _sides(daily, split)
+    before, after = frontier.split_sides(daily, split)
     chosen = choose(before, risk_free, max_weight, level)
     out: dict[str, Any] = {
         "date": split.isoformat(),

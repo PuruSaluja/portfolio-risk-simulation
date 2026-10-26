@@ -464,6 +464,24 @@ def _span(daily: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def split_sides(daily: pd.DataFrame, split: date) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The returns up to the close of ``split`` and after it, refused unless each side
+    has more days than there are funds."""
+    before = daily.loc[daily.index <= pd.Timestamp(split)]
+    after = daily.loc[daily.index > pd.Timestamp(split)]
+    funds = daily.shape[1]
+    # A covariance matrix of n funds needs more than n days to be positive definite.
+    if min(len(before), len(after)) <= funds:
+        # Where the returns run says why a side is short; with the bill rate they end
+        # with the factor cache, which can be before the prices do.
+        raise ValueError(
+            f"a split on {split.isoformat()} leaves returns on {len(before)} days before it "
+            f"and {len(after)} after; each side needs more than {funds}, one per fund (the "
+            f"returns run from {daily.index[0].date()} to {daily.index[-1].date()})"
+        )
+    return before, after
+
+
 def _held_out(
     daily: pd.DataFrame, split: date, estimator: Estimator, risk_free: Rate, max_weight: float
 ) -> dict[str, Any]:
@@ -472,15 +490,7 @@ def _held_out(
     For daily rates the tangency portfolio and the expected ratios before the split take
     the constant rate of the days before it, those chosen after it of the days after.
     """
-    before = daily.loc[daily.index <= pd.Timestamp(split)]
-    after = daily.loc[daily.index > pd.Timestamp(split)]
-    funds = daily.shape[1]
-    # A covariance matrix of n funds needs more than n days to be positive definite.
-    if min(len(before), len(after)) <= funds:
-        raise ValueError(
-            f"a split on {split.isoformat()} leaves returns on {len(before)} days before it "
-            f"and {len(after)} after; each side needs more than {funds}, one per fund"
-        )
+    before, after = split_sides(daily, split)
     early = estimates(before, estimator)
     late = estimates(after, estimator)
     rate_before = constant_rate(risk_free, before.index)

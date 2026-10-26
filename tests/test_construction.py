@@ -461,3 +461,14 @@ def test_bills_the_cache_lacks_or_that_miss_a_day_are_refused_plainly(
     with pytest.raises(SystemExit):
         main([*argv[:-1], "Bills"])
     assert "a compound annual rate such as 0.02, or bills, not 'Bills'" in capsys.readouterr().err
+
+
+def test_a_split_past_the_bill_s_last_day_says_where_the_returns_end(
+    tmp_path: Path, capsys
+) -> None:
+    # The prices run to 2024-12-31, the factor cache, and so the returns, to 2024-11-29.
+    argv = ["--cache", str(cache(tmp_path)), "--factors", str(factor_cache(tmp_path))]
+    assert main([*argv, "--risk-free", "bills", "--split", "2024-12-02"]) == 1
+    err = capsys.readouterr().err
+    assert "leaves returns on 499 days before it and 0 after" in err
+    assert "(the returns run from 2023-01-03 to 2024-11-29)" in err
