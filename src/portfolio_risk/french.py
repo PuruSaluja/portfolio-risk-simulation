@@ -52,6 +52,7 @@ import pandas as pd
 from portfolio_risk.data import (
     DEFAULT_END,
     DEFAULT_START,
+    EXACT_FLOATS,
     DataError,
     _parse_date,
     _write_atomic,
@@ -350,7 +351,7 @@ def load_factors(cache: Path = DEFAULT_CACHE) -> pd.DataFrame:
             io.BytesIO(data),
             dtype={"date": str} | {column: "float64" for column in FACTOR_COLUMNS},
             keep_default_na=False,
-            float_precision="round_trip",
+            **EXACT_FLOATS,
         )
         if list(factors.columns) != list(COLUMNS):
             raise DataError(f"{cache}: expected the columns {', '.join(COLUMNS)}")

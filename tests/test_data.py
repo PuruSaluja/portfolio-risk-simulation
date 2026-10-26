@@ -1,5 +1,6 @@
 import hashlib
 import importlib
+import io
 import json
 import re
 from datetime import UTC, date, datetime
@@ -12,8 +13,10 @@ import pytest
 from portfolio_risk import data
 from portfolio_risk.data import (
     COLUMNS,
+    EXACT_FLOATS,
     DataError,
     check_output,
+    exact_floats,
     fetch_prices,
     load_cache,
     main,
@@ -321,6 +324,30 @@ def test_closes_of_full_precision_read_back_to_the_last_bit(tmp_path: Path) -> N
     back = load_cache(write(tmp_path, prices))
     assert (back["close"].to_numpy() == prices["close"].to_numpy()).all()
     pd.testing.assert_frame_equal(back, prices, check_exact=True)
+
+
+def test_floats_of_every_size_read_back_exactly() -> None:
+    rng = np.random.default_rng(1)
+    values = rng.uniform(1.0, 10.0, 20_000) * 10.0 ** rng.integers(-12, 12, 20_000)
+    written = io.StringIO()
+    pd.DataFrame({"x": values}).to_csv(written, index=False)
+    back = pd.read_csv(io.StringIO(written.getvalue()), dtype={"x": "float64"}, **EXACT_FLOATS)
+    assert (back["x"].to_numpy() == values).all()
+
+
+@pytest.mark.parametrize(
+    "version, expected",
+    [
+        ("2.2.2", {"float_precision": "round_trip"}),
+        ("3.0.6", {"float_precision": "round_trip"}),
+        ("3.1.0", {}),
+        ("3.1.0rc1", {}),
+        ("3.10.2", {}),
+        ("4.0.0.dev0+12.g1a2b3c", {}),
+    ],
+)
+def test_the_round_trip_parser_is_asked_for_only_before_pandas_3_1(version, expected) -> None:
+    assert exact_floats(version) == expected
 
 
 def test_a_ticker_of_digits_alone_reads_back_as_text(tmp_path: Path) -> None:

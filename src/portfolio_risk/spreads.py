@@ -58,6 +58,7 @@ from portfolio_risk.data import (
     DEFAULT_END,
     DEFAULT_START,
     DEFAULT_TICKERS,
+    EXACT_FLOATS,
     DataError,
     _parse_date,
     _validate_window,
@@ -257,7 +258,7 @@ def load_ranges(cache: Path = DEFAULT_CACHE) -> pd.DataFrame:
             io.BytesIO(data),
             dtype={"date": str, "ticker": str} | {column: "float64" for column in PRICE_COLUMNS},
             keep_default_na=False,
-            float_precision="round_trip",
+            **EXACT_FLOATS,
         )
         if list(ranges.columns) != list(COLUMNS):
             raise DataError(f"{cache}: expected the columns {', '.join(COLUMNS)}")

@@ -73,6 +73,19 @@ DEFAULT_START = date(2005, 1, 1)
 DEFAULT_END = date(2026, 9, 30)
 DEFAULT_CACHE = Path("data") / "prices.csv"
 
+
+def exact_floats(version: str) -> dict[str, str]:
+    """What ``read_csv`` needs, under pandas ``version``, to read every float exactly as
+    it was written. Before pandas 3.1 the default parser reads some numbers a last bit
+    off (8,269 of the 43,760 closes of the 2005-2026 cache) and only "round_trip" is
+    exact; from 3.1 every mode uses one correctly rounded converter and
+    ``float_precision`` is deprecated."""
+    major, minor = (int(part) for part in version.split(".")[:2])
+    return {} if (major, minor) >= (3, 1) else {"float_precision": "round_trip"}
+
+
+EXACT_FLOATS = exact_floats(pd.__version__)
+
 # A ticker whose first price comes later than this after the window's start joined
 # part way through; a week covers the holidays at the start of a year.
 MAX_START_DELAY = timedelta(days=7)
@@ -423,9 +436,7 @@ def load_cache(cache: Path = DEFAULT_CACHE) -> pd.DataFrame:
             # Read as text, or a ticker of digits alone would come back as a number.
             dtype={"date": str, "ticker": str} | {column: "float64" for column in COLUMNS[2:]},
             keep_default_na=False,
-            # The default parser reads some numbers a last bit off what was written
-            # (8,269 of the 43,760 closes of the 2005-2026 cache); this one is exact.
-            float_precision="round_trip",
+            **EXACT_FLOATS,
         )
     except (ValueError, TypeError) as exc:
         raise DataError(f"{cache} cannot be parsed: {exc}") from None
