@@ -69,7 +69,7 @@ def test_fetch_keeps_each_day_s_high_low_and_close_in_ticker_order() -> None:
             "outside the day's range",
         ),
         (lambda f: f.__setitem__(("Low", "AAA"), 0.0), "low is 0.0, not a positive number"),
-        (lambda f: f.drop(columns=("High", "BBB"), inplace=True), "no High for BBB"),
+        (lambda f: f.__delitem__(("High", "BBB")), "no High for BBB"),
     ],
 )
 def test_bars_the_estimators_would_misread_are_refused(change, message) -> None:

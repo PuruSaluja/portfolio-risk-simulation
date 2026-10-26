@@ -156,7 +156,7 @@ def test_periods_are_labelled_by_their_last_trading_day() -> None:
     weekly = compound(r, "W")
     assert weekly.index[0] == pd.Timestamp("2024-01-05")
     assert weekly.iloc[0] == pytest.approx(1.01**5 - 1)
-    assert (weekly.index.dayofweek == 4).all()
+    assert (weekly.index.day_of_week == 4).all()
 
 
 def test_compound_works_on_each_column_of_a_frame() -> None:
