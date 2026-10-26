@@ -366,6 +366,9 @@ def write_cache(
 
 
 def read_manifest(cache: Path) -> dict[str, Any]:
+    cache = Path(cache)
+    if cache.is_dir():
+        raise DataError(f"{cache} is a folder; the cache is a file, such as {DEFAULT_CACHE}")
     path = manifest_path(cache)
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))

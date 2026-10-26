@@ -439,3 +439,9 @@ def test_command_line_errors_are_reported_without_a_traceback(
     blocker.write_text("x")
     assert main(["fetch", "--out", str(blocker / "factors.csv"), "--end", "2024-02-29"]) == 1
     assert capsys.readouterr().err.startswith("error:")
+
+
+def test_a_folder_given_as_the_factor_cache_is_refused_as_one(tmp_path: Path) -> None:
+    for read in (french.load_factors, french.read_manifest):
+        with pytest.raises(DataError, match="is a folder; the cache is a file"):
+            read(tmp_path)

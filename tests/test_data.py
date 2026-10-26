@@ -628,3 +628,11 @@ def test_an_output_check_lets_a_new_file_and_new_folders_through(tmp_path: Path)
     check_output(tmp_path / "out.json")
     check_output(tmp_path / "new" / "deeper" / "out.json")
     assert not (tmp_path / "new").exists()
+
+
+def test_a_folder_given_as_the_cache_is_refused_as_one(tmp_path: Path) -> None:
+    for read in (load_cache, read_manifest):
+        with pytest.raises(
+            DataError, match=re.escape(f"{tmp_path} is a folder; the cache is a file")
+        ):
+            read(tmp_path)
