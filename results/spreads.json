@@ -1,0 +1,153 @@
+{
+  "ranges_sha256": "99bc5ad6876907c72be44a4d47a0d5b275a92779e7a7b3d0089a189a95c1f496",
+  "cache_sha256": "b5c1484cb49ea2259e83ca465cdde57e0e0df2ec5d52dff4a85c6ead80538168",
+  "first_month": "2006-02",
+  "last_day": "2026-09-30",
+  "seed": 0,
+  "funds": {
+    "SPY": {
+      "months": 248,
+      "one_cent_spread": 5.021567223055314e-05,
+      "daily_volatility": 0.01214811840572699,
+      "abdi_ranaldo": {
+        "mean": 0.002869849433636971,
+        "median": 0.0019127615257143954,
+        "months_at_zero": 102
+      },
+      "corwin_schultz": {
+        "mean": 0.0030326933149958774,
+        "median": 0.0024190620072838927
+      },
+      "simulated_at_one_cent": {
+        "abdi_ranaldo": 0.002550304092345426,
+        "corwin_schultz": 0.004872415039653226
+      }
+    },
+    "IWM": {
+      "months": 248,
+      "one_cent_spread": 9.225837565464773e-05,
+      "daily_volatility": 0.015398475624268925,
+      "abdi_ranaldo": {
+        "mean": 0.003518585635874276,
+        "median": 0.0022488735084192656,
+        "months_at_zero": 108
+      },
+      "corwin_schultz": {
+        "mean": 0.004561218791832322,
+        "median": 0.0038732862565941245
+      },
+      "simulated_at_one_cent": {
+        "abdi_ranaldo": 0.0032312640949039924,
+        "corwin_schultz": 0.006177275589928364
+      }
+    },
+    "EFA": {
+      "months": 248,
+      "one_cent_spread": 0.0001549284633942097,
+      "daily_volatility": 0.013466241474778188,
+      "abdi_ranaldo": {
+        "mean": 0.003205670299242879,
+        "median": 0.0020181711157542404,
+        "months_at_zero": 104
+      },
+      "corwin_schultz": {
+        "mean": 0.0025222760802149306,
+        "median": 0.00200141958904181
+      },
+      "simulated_at_one_cent": {
+        "abdi_ranaldo": 0.002821227019132296,
+        "corwin_schultz": 0.005408772306378673
+      }
+    },
+    "EEM": {
+      "months": 248,
+      "one_cent_spread": 0.0002241410509628242,
+      "daily_volatility": 0.01759534575067357,
+      "abdi_ranaldo": {
+        "mean": 0.004154771574238137,
+        "median": 0.002653071319300338,
+        "months_at_zero": 102
+      },
+      "corwin_schultz": {
+        "mean": 0.0033400799358377707,
+        "median": 0.0025191565119492467
+      },
+      "simulated_at_one_cent": {
+        "abdi_ranaldo": 0.003683738050983507,
+        "corwin_schultz": 0.007070081124725863
+      }
+    },
+    "AGG": {
+      "months": 248,
+      "one_cent_spread": 9.488582038419664e-05,
+      "daily_volatility": 0.003329061977649472,
+      "abdi_ranaldo": {
+        "mean": 0.0009323113916472278,
+        "median": 0.0006316867983171162,
+        "months_at_zero": 83
+      },
+      "corwin_schultz": {
+        "mean": 0.0008192248843767243,
+        "median": 0.000640890612367746
+      },
+      "simulated_at_one_cent": {
+        "abdi_ranaldo": 0.0006957225293909764,
+        "corwin_schultz": 0.001349055857439703
+      }
+    },
+    "TLT": {
+      "months": 248,
+      "one_cent_spread": 9.271585008954656e-05,
+      "daily_volatility": 0.009221806214858526,
+      "abdi_ranaldo": {
+        "mean": 0.00217998996338298,
+        "median": 0.0016442213414373974,
+        "months_at_zero": 104
+      },
+      "corwin_schultz": {
+        "mean": 0.002139947546758243,
+        "median": 0.0018950250579862979
+      },
+      "simulated_at_one_cent": {
+        "abdi_ranaldo": 0.0019329723193062117,
+        "corwin_schultz": 0.00370245214754819
+      }
+    },
+    "GLD": {
+      "months": 248,
+      "one_cent_spread": 7.91937422475803e-05,
+      "daily_volatility": 0.01167660551954125,
+      "abdi_ranaldo": {
+        "mean": 0.0022629360785418893,
+        "median": 0.0,
+        "months_at_zero": 135
+      },
+      "corwin_schultz": {
+        "mean": 0.0023249946183108916,
+        "median": 0.002128631308719002
+      },
+      "simulated_at_one_cent": {
+        "abdi_ranaldo": 0.002449801640807922,
+        "corwin_schultz": 0.004684816458746172
+      }
+    },
+    "VNQ": {
+      "months": 248,
+      "one_cent_spread": 0.0001420555921660997,
+      "daily_volatility": 0.018328977317127404,
+      "abdi_ranaldo": {
+        "mean": 0.00461597537911073,
+        "median": 0.002547774576479662,
+        "months_at_zero": 101
+      },
+      "corwin_schultz": {
+        "mean": 0.004769994567170357,
+        "median": 0.0034812731892640385
+      },
+      "simulated_at_one_cent": {
+        "abdi_ranaldo": 0.003844546277157517,
+        "corwin_schultz": 0.007354959441926277
+      }
+    }
+  }
+}

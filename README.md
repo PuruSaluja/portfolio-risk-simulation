@@ -732,6 +732,75 @@ close would trade, pays no spread, and commissions, market impact and wider
 quotes in stress all come on top. So the floor shows how cheap rebalancing can
 be, not how cheap it was.
 
+### Estimating spreads from highs and lows: a negative result
+
+Yahoo's daily bars also carry each day's high and low, and two published
+estimators turn them into a bid-ask spread:
+[`spreads.py`](src/portfolio_risk/spreads.py) implements Abdi and Ranaldo
+(2017), from the close's place against the day's mid-range and the next
+day's, and Corwin and Schultz (2012), from one-day against two-day high-low
+ranges. Both assume that the spread, not the price's movement within the
+day, sets where the close falls in the range. For these funds that does not
+hold, and neither estimator can measure their spreads.
+
+```bash
+python -m portfolio_risk.spreads fetch      # highs, lows and closes into data/ranges.csv
+python -m portfolio_risk.spreads verify
+python -m portfolio_risk.spreads estimate --json results/spreads.json
+```
+
+The ranges are cached and checked like the prices (the manifest,
+[`data/ranges.manifest.json`](data/ranges.manifest.json), is committed, the
+data is not): 43,760 bars, every close equal to the price cache's to the
+bit, no close outside its day's range, and a second fetch gave the same
+file. The estimates are monthly, over the 248 whole months from February
+2006, when the one-cent rule had begun, with the two-day windows that end on
+a distribution or split day left out. In basis points of the price
+([`results/spreads.json`](results/spreads.json)):
+
+| Fund | One cent | Abdi-Ranaldo, mean | median | Months at zero | Corwin-Schultz, mean | Daily volatility | Abdi-Ranaldo, simulated at one cent | Corwin-Schultz, simulated at one cent |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| SPY | 0.50 | 28.7 | 19.1 | 102 of 248 | 30.3 | 1.21% | 25.5 | 48.7 |
+| IWM | 0.92 | 35.2 | 22.5 | 108 of 248 | 45.6 | 1.54% | 32.3 | 61.8 |
+| EFA | 1.55 | 32.1 | 20.2 | 104 of 248 | 25.2 | 1.35% | 28.2 | 54.1 |
+| EEM | 2.24 | 41.5 | 26.5 | 102 of 248 | 33.4 | 1.76% | 36.8 | 70.7 |
+| AGG | 0.95 | 9.3 | 6.3 | 83 of 248 | 8.2 | 0.33% | 7.0 | 13.5 |
+| TLT | 0.93 | 21.8 | 16.4 | 104 of 248 | 21.4 | 0.92% | 19.3 | 37.0 |
+| GLD | 0.79 | 22.6 | 0.0 | 135 of 248 | 23.2 | 1.17% | 24.5 | 46.8 |
+| VNQ | 1.42 | 46.2 | 25.5 | 101 of 248 | 47.7 | 1.83% | 38.4 | 73.5 |
+
+"One cent" is a one-cent spread over each fund's traded close (before a
+split, the price it traded at), averaged by month: the narrowest quote the
+rules allowed. Both estimators read the spreads as 9 to 60 times that: Abdi
+and Ranaldo 9.8 (AGG) to 57 (SPY) times, Corwin and Schultz 8.6 to 60. SPY,
+with the highest price of the eight (on average $277) and so the narrowest
+cent, comes out widest beside it. A third to more than half of Abdi and
+Ranaldo's months are at zero (where the estimate's square would be
+negative), a sign that the noise around the estimate is as large as the
+estimate itself.
+
+**Why.** `simulate` builds bars from a known spread: 390 trades a day, each
+at the bid or the ask, around a mid-price that moves as a random walk. With
+a spread wide beside the day's movement (50 bp at 0.2% a day) both
+estimators recover it, Abdi and Ranaldo within 5% and Corwin and Schultz
+within 10%; with a basis point at 1% a day they read it as more than 10 and
+20 times wider. The last two columns set each fund's spread to exactly its
+one-cent spread and its volatility to its own: Abdi and Ranaldo then read
+SPY at 25.5 bp, AGG at 7.0, EEM at 36.8, close to what they read on the real
+data, so a one-cent spread is enough to explain the real readings. Over seeds
+0 to 4 the real readings are 0.88 to 1.46 times the simulated ones. Corwin
+and Schultz read the simulated bars 1.35 to 2.14 times as wide as the real
+ones, so for them the simulation is a rougher model of the real bars (it has
+no overnight gaps, for one); their real readings are still 8.6 to 60 times a
+cent.
+
+So daily bars cannot measure these funds' spreads: a cent on a price of $18
+to $778 (the range of their traded closes since February 2006) is a small
+fraction of a day's range, and the estimators read the range. They are kept,
+with the simulation, because they are widely used to estimate spreads where
+there are no quotes, and they fail here for a reason that can be shown. The costs above use assumed levels
+and the tick floor, not these estimates.
+
 ## Mean-variance optimisation and the efficient frontier
 
 [`frontier.py`](src/portfolio_risk/frontier.py) finds long-only, fully
@@ -1193,6 +1262,7 @@ zero rate made with the same command at a zero rate on the same days
 | Fama-French factor attribution (Ken French data library), ratios against the bill rate | done |
 | Risk parity and CVaR optimisation, compared out of sample | done |
 | Cost-aware backtest: transaction costs, spreads (assumed, and a measured floor), rebalancing drag | done |
+| Spread estimates from daily highs and lows (Abdi-Ranaldo, Corwin-Schultz), tested by simulation: they cannot measure these funds' spreads | done |
 | Tableau extracts, dashboard spec and Plotly reproduction | to come |
 
 ## Development
