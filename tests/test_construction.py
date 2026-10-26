@@ -357,6 +357,21 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         assert captured.err.startswith("error: ") and message in captured.err
 
 
+def test_describe_refuses_a_bad_rate_rather_than_giving_no_ratio() -> None:
+    # Regression: a rate that is not a number reached the Sharpe ratio, whose refusal
+    # became None, as for returns that never vary.
+    daily = total_returns(prices()).iloc[:60]
+    w = pd.Series(1 / 3, index=daily.columns)
+    first = daily.index[0] - pd.Timedelta(days=3)
+    for rate in (math.nan, math.inf, -1.0):
+        with pytest.raises(ValueError, match="an annual rate must be a finite number"):
+            construction.describe(daily, w, first, rate)
+    # A rate equal to the portfolio's own return each day leaves an excess return that
+    # never varies: no ratio, and no error.
+    own = portfolio(daily, w)
+    assert construction.describe(daily, w, first, own)["sharpe_ratio"] is None
+
+
 def test_risk_parity_converges_where_the_last_step_is_below_rounding() -> None:
     # Near the solution the Newton decrease is far below what the objective can show;
     # a line search there sees only rounding. These include matrices on which it

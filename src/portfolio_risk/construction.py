@@ -271,12 +271,14 @@ def describe(
     per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *daily.index]))
     days = ret.TRADING_DAYS_PER_YEAR
     _, covariance = frontier.estimates(daily)
+    rates = frontier.rates_on(risk_free, daily.index)
+    # Checked here: the Sharpe ratio's own refusals give None, which is for returns that
+    # leave it undefined, not for a rate that is wrong.
+    risk.per_period_rates(rates, history, days)
     return {
         "mean": float(ret.annualised_mean(history, days)),
         "volatility": float(ret.annualised_volatility(history, days)),
-        "sharpe_ratio": risk.or_none(
-            risk.sharpe_ratio, history, days, frontier.rates_on(risk_free, daily.index)
-        ),
+        "sharpe_ratio": risk.or_none(risk.sharpe_ratio, history, days, rates),
         "compound_return": float(ret.annualised_return(history, per_year)),
         "max_drawdown": risk.max_drawdown(history).depth,
         "value_at_risk": risk.value_at_risk(history, level),
