@@ -433,3 +433,72 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         captured = capsys.readouterr()
         assert captured.out == ""
         assert captured.err.startswith("error: ") and message in captured.err, argv
+
+
+def split_prices() -> pd.DataFrame:
+    """Two funds over the start of the tick rule; BBB splits 3 for 1 on 2006-02-15."""
+    days = pd.bdate_range("2006-01-02", "2006-03-31")
+    rows = []
+    rng = np.random.default_rng(6)
+    for ticker, start in (("AAA", 20.0), ("BBB", 150.0)):
+        close = start * np.cumprod(1.0 + rng.normal(0.0005, 0.01, len(days)))
+        for day, value in zip(days, close, strict=True):
+            split = 3.0 if ticker == "BBB" and day == pd.Timestamp("2006-02-15") else 0.0
+            # The cache's closes are adjusted for later splits: BBB's are a third before.
+            adjusted = value / 3.0 if ticker == "BBB" else value
+            rows.append((day.date(), ticker, float(adjusted), 0.0, 0.0, split, 1e6))
+    return pd.DataFrame(rows, columns=list(COLUMNS))
+
+
+def test_closes_before_a_split_are_put_back_on_their_traded_basis() -> None:
+    prices = split_prices()
+    traded = costs.traded_closes(prices)
+    cached = prices.pivot(index="date", columns="ticker", values="close")
+    cached.index = pd.DatetimeIndex(cached.index)
+    before = traded.index < pd.Timestamp("2006-02-15")
+    np.testing.assert_allclose(traded.loc[before, "BBB"], 3 * cached.loc[before, "BBB"])
+    np.testing.assert_array_equal(traded.loc[~before, "BBB"], cached.loc[~before, "BBB"])
+    np.testing.assert_array_equal(traded["AAA"], cached["AAA"])
+
+
+def test_the_tick_floor_is_half_a_cent_of_the_traded_close_from_the_rule() -> None:
+    prices = split_prices()
+    dates = total_returns(prices).index
+    floor = costs.tick_floor(prices, dates)
+    traded = costs.traded_closes(prices).loc[dates]
+    early = dates < pd.Timestamp("2006-01-31")
+    assert early.any() and (floor[early] == 0.0).all().all()
+    np.testing.assert_allclose(floor[~early], 0.005 / traded[~early], rtol=1e-15)
+    # A third of the cached close would give three times the floor.
+    assert floor.loc["2006-02-14", "BBB"] < 0.005 / prices[prices["ticker"] == "BBB"]["close"].max()
+    with pytest.raises(ValueError, match="a close for every fund"):
+        costs.tick_floor(prices, dates.append(pd.DatetimeIndex(["2006-04-03"])))
+    cheap = prices.assign(close=prices["close"] / 100.0)
+    with pytest.raises(ValueError, match=r"below \$1"):
+        costs.tick_floor(cheap, dates)
+
+
+def test_the_command_charges_the_tick_floor_each_day(tmp_path: Path, capsys) -> None:
+    path = tmp_path / "prices.csv"
+    write_cache(split_prices(), path, start=date(2006, 1, 1), end=date(2006, 3, 31), source="t")
+    out = tmp_path / "tick.json"
+    argv = ["--cache", str(path), "--json", str(out), "--mix", "equal", "--rule", "daily"]
+    assert main([*argv, "--spread", "Tick", "--cost", "0", "--cost", "0.001"]) == 0
+    assert "plus the tick floor, half of a 0.01 tick" in capsys.readouterr().out
+    written = json.loads(out.read_text(encoding="utf-8"))
+    loaded = load_cache(path)
+    daily = total_returns(loaded)
+    floor = costs.tick_floor(loaded, daily.index)
+    assert written["spreads"]["mean_one_way"]["BBB"] == pytest.approx(floor["BBB"].mean())
+    after = floor.loc["2006-01-31":, "AAA"].mean()
+    assert written["spreads"]["mean_one_way_from_tick_rule"]["AAA"] == pytest.approx(after)
+    made = costs.trades(backtest(daily, {"AAA": 0.5, "BBB": 0.5}, "daily"), daily)
+    per_year = observed_periods_per_year(pd.DatetimeIndex(["2006-01-02", *daily.index]))
+    for level, entry in zip(
+        [0.0, 0.001], written["history"]["equal"]["daily"]["costs"], strict=True
+    ):
+        expected = costs.summarise(made, floor + level, per_year)
+        assert entry["drag"] == pytest.approx(expected["drag"], rel=1e-12)
+    assert written["history"]["equal"]["daily"]["costs"][0]["drag"] > 0.0
+    with pytest.raises(ValueError, match="or tick, not 'ticks'"):
+        costs.run(loaded, ["equal"], ["daily"], spreads="ticks")

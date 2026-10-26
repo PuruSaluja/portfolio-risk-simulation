@@ -50,6 +50,7 @@ import math
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -273,6 +274,45 @@ def breakeven(
     return out
 
 
+# The narrowest quoted spread allowed: Rule 612 of Regulation NMS sets a minimum quoting
+# increment of one cent for stocks (these funds among them) priced at $1 or more, with
+# compliance from 31 January 2006. The half-cent increment adopted in 2024 for the most
+# tightly quoted stocks had its compliance date postponed past the end of the data
+# (to November 2026, then November 2027).
+TICK = 0.01
+TICK_FROM = date(2006, 1, 31)
+# ``--spread`` names the floor this way.
+TICK_SPREAD = "tick"
+
+
+def traded_closes(prices: pd.DataFrame) -> pd.DataFrame:
+    """Each fund's close as it traded that day: the cache's closes are adjusted for later
+    splits, so a close before a split is multiplied back by every later split's ratio."""
+    closes = wide(prices, "close")
+    ratios = wide(prices, "split").reindex(closes.index).fillna(0.0)
+    ratios = ratios.where(ratios > 0.0, 1.0)
+    # The ratios of the splits after each day: on a split's own day the close is already
+    # on the new basis.
+    later = ratios[::-1].cumprod()[::-1].shift(-1).fillna(1.0)
+    return closes * later
+
+
+def tick_floor(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
+    """The one-way cost of crossing the narrowest quote the tick allows, half a cent, as
+    a share of each fund's traded close on each of ``dates``; 0 before ``TICK_FROM``,
+    when no rule set the increment. A lower bound on what an order that crosses the
+    displayed quote pays, not on every way to trade: an order filled at the midpoint or
+    in the closing auction pays no spread."""
+    closes = traded_closes(prices).reindex(dates)
+    if closes.isna().to_numpy().any():
+        raise ValueError("needs a close for every fund on every date")
+    if (closes < 1.0).to_numpy().any():
+        raise ValueError("below $1 the tick is not a cent; the floor needs closes of $1 or more")
+    floor = 0.5 * TICK / closes
+    floor.loc[floor.index < pd.Timestamp(TICK_FROM)] = 0.0
+    return floor
+
+
 # One-way costs per unit traded the command reads the backtests at: 0 to 50 basis points.
 LEVELS = (0.0, 0.0001, 0.0005, 0.001, 0.0025, 0.005)
 COMPARE = (("daily", "monthly"), ("daily", "band:0.05"), ("band:0.05", "never"))
@@ -283,15 +323,18 @@ def run(
     mixes: Sequence[str] = tuple(scenarios.MIXES),
     rules: Sequence[str] = scenarios.RULES,
     levels: Sequence[float] = LEVELS,
-    spreads: float | Mapping[str, float] = 0.0,
+    spreads: float | Mapping[str, float] | str = 0.0,
     compare: Sequence[Sequence[str]] = COMPARE,
 ) -> dict[str, Any]:
     """Every mix under every rule at each one-way cost ``level``, and the break-even
     cost of each pair of rules in ``compare`` for each mix.
 
-    A fund's cost at a level is the level plus half its spread in ``spreads``. The
+    A fund's cost at a level is the level plus half its spread in ``spreads``, or with
+    ``spreads`` of ``TICK_SPREAD`` the level plus each day's ``tick_floor``. The
     break-even costs are the same for every fund and leave ``spreads`` out.
     """
+    if isinstance(spreads, str) and spreads != TICK_SPREAD:
+        raise ValueError(f"spreads are numbers, one per fund, or {TICK_SPREAD}, not {spreads!r}")
     daily = ret.total_returns(prices)
     tickers = [str(t) for t in daily.columns]
     if not mixes or not rules or not levels:
@@ -313,8 +356,21 @@ def run(
         if len(pair) != 2 or scenarios._rule_key(pair[0]) == scenarios._rule_key(pair[1]):
             raise ValueError(f"needs two different rules to compare, not {list(pair)!r}")
     # Checked before the backtests, so a bad cost does not wait for them.
-    per_level = [per_unit(level, spreads, tickers) for level in levels]
-    full = spreads if isinstance(spreads, Mapping) else dict.fromkeys(tickers, spreads)
+    if spreads == TICK_SPREAD:
+        floor = tick_floor(prices, daily.index)
+        per_level = [floor + per_unit(level, 0.0, tickers) for level in levels]
+        spread_figures: Any = {
+            "rule": f"half of a {TICK:g} tick on each day's traded close, from "
+            f"{TICK_FROM.isoformat()}",
+            "mean_one_way": {t: float(floor[t].mean()) for t in tickers},
+            "mean_one_way_from_tick_rule": {
+                t: float(floor.loc[pd.Timestamp(TICK_FROM) :, t].mean()) for t in tickers
+            },
+        }
+    else:
+        per_level = [per_unit(level, spreads, tickers) for level in levels]
+        full = spreads if isinstance(spreads, Mapping) else dict.fromkeys(tickers, spreads)
+        spread_figures = {t: float(full.get(t, 0.0)) for t in tickers}
     first_close = wide(prices, "close").dropna().index[0]
     per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *daily.index]))
     history: dict[str, Any] = {}
@@ -344,7 +400,7 @@ def run(
         "mixes": weights,
         "rules": list(rules),
         "costs": list(levels),
-        "spreads": {t: float(full.get(t, 0.0)) for t in tickers},
+        "spreads": spread_figures,
         "history": history,
         "breakeven": [
             {
@@ -369,7 +425,13 @@ def _bp(value: float) -> str:
 
 def _print(result: dict[str, Any]) -> None:
     print(f"daily total returns {result['first_return']} to {result['last_return']}")
-    if any(result["spreads"].values()):
+    if "rule" in result["spreads"]:
+        floor = result["spreads"]["mean_one_way_from_tick_rule"]
+        print(
+            f"plus the tick floor, {result['spreads']['rule']}; one-way, on average from "
+            "then: " + ", ".join(f"{t} {s * 1e4:.2f} bp" for t, s in floor.items())
+        )
+    elif any(result["spreads"].values()):
         print(
             "plus half of each fund's spread: "
             + ", ".join(f"{t} {_bp(s)}" for t, s in result["spreads"].items() if s)
@@ -412,8 +474,10 @@ def _costs(texts: Sequence[str] | None) -> tuple[float, ...]:
         ) from None
 
 
-def _spreads(text: str) -> float | dict[str, float]:
-    """One spread, ``0.0002``, or one per fund, ``SPY=0.0001,EEM=0.0006``."""
+def _spreads(text: str) -> float | dict[str, float] | str:
+    """One spread, ``0.0002``, one per fund, ``SPY=0.0001,EEM=0.0006``, or the tick floor."""
+    if text.strip().lower() == TICK_SPREAD:
+        return TICK_SPREAD
     bad = ValueError(
         f"a spread is a number such as 0.0002, or one per fund such as "
         f"SPY=0.0001,EEM=0.0006, not {text!r}"
@@ -460,7 +524,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--spread",
         default="0",
         help="a quoted bid-ask spread, half of it added to every cost: one for every fund, "
-        "such as 0.0002, or one per fund, such as SPY=0.0001,EEM=0.0006 (default 0)",
+        "such as 0.0002, one per fund, such as SPY=0.0001,EEM=0.0006, or "
+        f"{TICK_SPREAD} for a one-cent spread on each day's close (default 0)",
     )
     parser.add_argument(
         "--compare",
