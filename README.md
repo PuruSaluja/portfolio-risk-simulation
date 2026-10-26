@@ -234,7 +234,9 @@ Three models, each answering for an assumption the one before makes:
 
 Runs are reproducible: the seed fixes every path, every model draws from the
 same seed, and path `i` is the same whatever number of paths is asked for (they
-are drawn in blocks of 1,000, each from its own stream spawned from the seed).
+are drawn in blocks of 1,000, each from its own stream spawned from the seed, and
+a block is always drawn whole, so a path does not depend on how many follow it).
+The output files are byte for byte the same in any process.
 The normal and t models factor the covariance by Cholesky, which is unique, so the
 paths do not depend on the linear-algebra library numpy was built with: numpy
 2.4.6 from Anaconda and 2.5.4 from PyPI give figures within 2e-14 of each other.
@@ -1343,6 +1345,7 @@ zero rate made with the same command at a zero rate on the same days
 | Risk parity and CVaR optimisation, compared out of sample, before and after trading costs | done |
 | Cost-aware backtest: transaction costs, spreads (assumed, and a measured floor), rebalancing drag | done |
 | Spread estimates from daily highs and lows (Abdi-Ranaldo, Corwin-Schultz), tested by simulation: they cannot measure these funds' spreads | done |
+| Tests: closed-form checks across modules, Monte Carlo convergence, reproducible seeds | done |
 | Tableau extracts, dashboard spec and Plotly reproduction | to come |
 
 ## Development
@@ -1355,7 +1358,20 @@ ruff check . && ruff format --check .
 ```
 
 The tests never reach Yahoo or the data library: they stand in for the
-downloads.
+downloads. Beside each module's own tests, three files check the project as a
+whole:
+
+- [`tests/test_analytic.py`](tests/test_analytic.py): cases whose answers are
+  worked out by hand, such as the tangency portfolio's closed form, and a fund
+  that rises and falls back, held against cash, through the backtest, the cost
+  of each rebalance and the cost at which rebalancing stops paying, to 1e-12.
+- [`tests/test_convergence.py`](tests/test_convergence.py): the Monte Carlo
+  estimates against the closed forms of the models simulated (lognormal
+  quantiles, VaR and expected shortfall, the scaled t), within four standard
+  errors, and the error of a mean falling as one over the root of the paths.
+- [`tests/test_seeds.py`](tests/test_seeds.py): a seed gives byte-identical
+  files in fresh interpreters with different string hashing, and no two seeds
+  share a stream.
 
 ## License
 
