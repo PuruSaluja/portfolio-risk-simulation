@@ -588,13 +588,21 @@ impact or taxes.
 closes only, with no bid, ask, high or low, so it cannot say what these funds
 cost to trade. The command reads every backtest at one-way costs of 0, 1, 5,
 10, 25 and 50 basis points per unit traded, and finds the **break-even cost**,
-the same for every fund, at which one rule's lead over another is gone.
+the same for every fund, at which one rule's lead over another is gone: the
+lowest such cost. The leading rule's return can fall only so fast as the cost
+rises, by a bound computed from its trades, so a lead of `g` cannot vanish
+within `g` over that bound; the search steps that far at a time (at least a
+thousandth of a basis point) and then bisects, so it cannot step over a
+crossing.
 
 The tests check the net returns against a loop that holds the funds in money,
 pays the costs inside it and decides the band rule's trades from its own
 after-cost weights: they agree to 1e-15 for five rules and three cost
 settings, one with a different cost for each fund. Newton's method is checked
-against bisection for 2 to 50 funds, and the break-even cost against a scan.
+against bisection for 2 to 50 funds. The bound is checked against the
+measured fall of the return for four rules at costs up to 10%, where it is
+at most 1.35 times the steepest fall, and the search against leads that dip
+below zero between two basis points and recover.
 
 ```bash
 python -m portfolio_risk.costs --json results/costs.json
