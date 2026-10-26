@@ -47,7 +47,9 @@ realised ratios subtract each day's rate, as ``risk.sharpe_ratio`` does.
 ``python -m portfolio_risk.frontier`` gives the frontier, the minimum-variance and
 tangency portfolios and equal weights from the cache's daily total returns, and the
 same three chosen from the returns up to each of a few split dates and held after it:
-what the optimiser expected of them, and what they returned.
+what the optimiser expected of them, and what they returned. Held after a split, each
+is also charged for its trades (``costs.held``): rebalanced every close, monthly and
+within a 5-point band, at one-way costs of 0 to 50 basis points.
 """
 
 from __future__ import annotations
@@ -64,8 +66,8 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
+from portfolio_risk import costs, french, risk
 from portfolio_risk import covariance as cov
-from portfolio_risk import french, risk
 from portfolio_risk import returns as ret
 from portfolio_risk.data import (
     DEFAULT_CACHE,
@@ -443,17 +445,18 @@ def _described(
 
 def _realised(daily: pd.DataFrame, w: pd.Series, risk_free: Rate, first: pd.Timestamp) -> dict:
     """What a portfolio, rebalanced every close, returned over ``daily``; daily rates are
-    subtracted day by day."""
+    subtracted day by day. Under ``costs`` the same held under each of
+    ``costs.HELD_RULES`` and charged each of ``costs.LEVELS``."""
     history = historical_portfolio_returns(daily, w.to_dict())
     per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first, *daily.index]))
     days = ret.TRADING_DAYS_PER_YEAR
+    rates = rates_on(risk_free, daily.index)
     return {
         "mean": float(ret.annualised_mean(history, days)),
         "volatility": float(ret.annualised_volatility(history, days)),
-        "sharpe_ratio": risk.or_none(
-            risk.sharpe_ratio, history, days, rates_on(risk_free, daily.index)
-        ),
+        "sharpe_ratio": risk.or_none(risk.sharpe_ratio, history, days, rates),
         "compound_return": float(ret.annualised_return(history, per_year)),
+        "costs": costs.held(daily, w.to_dict(), first, rates),
     }
 
 
@@ -642,6 +645,7 @@ def _print(result: dict[str, Any]) -> None:
                 print(f"  {name} chosen before: {_weights_text(p['weights'])}")
                 later = split["chosen_after"][name]["weights"]
                 print(f"  {name} chosen after:  {_weights_text(later)}")
+        costs.print_held({name: p["realised"]["costs"] for name, p in split["portfolios"].items()})
 
 
 def _splits(texts: Sequence[str] | None) -> tuple[date, ...]:

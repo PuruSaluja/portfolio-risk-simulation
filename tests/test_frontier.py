@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from portfolio_risk import french
+from portfolio_risk import costs, french
 from portfolio_risk import frontier as fr
 from portfolio_risk.data import COLUMNS, load_cache, write_cache
 from portfolio_risk.frontier import main
@@ -434,6 +434,17 @@ def test_the_command_prints_and_writes_the_frontier_and_the_splits(tmp_path: Pat
     assert entry["realised"]["compound_return"] == pytest.approx(
         np.prod(1 + history) ** (1 / years) - 1, rel=1e-12
     )
+    # Charged for its trades under each rule, from the split's close; held every close
+    # at no cost, it is the portfolio above.
+    charged = entry["realised"]["costs"]
+    assert charged == costs.held(after, held.to_dict(), pd.Timestamp("2023-12-29"))
+    assert list(charged) == list(costs.HELD_RULES)
+    assert [c["cost"] for c in charged["daily"]["costs"]] == list(costs.LEVELS)
+    free = charged["daily"]["costs"][0]
+    assert free["compound_return"] == pytest.approx(entry["realised"]["compound_return"], rel=1e-12)
+    assert free["sharpe_ratio"] == pytest.approx(entry["realised"]["sharpe_ratio"], rel=1e-12)
+    assert charged["daily"]["costs"][-1]["compound_return"] < free["compound_return"]
+    assert "Sharpe ratio after a one-way cost per unit traded of" in printed
     assert (
         split["chosen_after"]["max_sharpe"]["weights"]
         == fr.max_sharpe(*fr.estimates(after)).to_dict()
@@ -681,6 +692,10 @@ def test_the_command_measures_against_the_bill_over_the_days_it_covers(
     history = historical_portfolio_returns(after, held.to_dict())
     assert entry["realised"]["sharpe_ratio"] == pytest.approx(
         sharpe_ratio(history, 252, rates_after), rel=1e-12
+    )
+    # After costs too, under every rule.
+    assert entry["realised"]["costs"] == costs.held(
+        after, held.to_dict(), before.index[-1], rates_after
     )
     later = fr.max_sharpe(*fr.estimates(after), split["constant_rate"]["held_on"])
     assert split["chosen_after"]["max_sharpe"]["weights"] == later.to_dict()

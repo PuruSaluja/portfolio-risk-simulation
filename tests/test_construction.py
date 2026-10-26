@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from portfolio_risk import construction, french
+from portfolio_risk import construction, costs, french
 from portfolio_risk import frontier as fr
 from portfolio_risk.construction import (
     PORTFOLIOS,
@@ -284,6 +284,17 @@ def test_the_command_compares_the_six_portfolios_in_and_out_of_sample(
     assert got["volatility"] == pytest.approx(held.std() * math.sqrt(252), rel=1e-12)
     years = (after.index[-1] - before.index[-1]).days / 365.25
     assert got["compound_return"] == pytest.approx((1 + held).prod() ** (1 / years) - 1, rel=1e-9)
+    # Held, each is charged for its trades under each rule; every close at no cost is the
+    # portfolio above. Not in sample.
+    for name, p in split["portfolios"].items():
+        charged = p["held"]["costs"]
+        assert charged == costs.held(after, p["weights"], before.index[-1]), name
+        assert list(charged) == list(costs.HELD_RULES)
+        free = charged["daily"]["costs"][0]
+        assert free["compound_return"] == pytest.approx(p["held"]["compound_return"], rel=1e-12)
+        assert free["sharpe_ratio"] == pytest.approx(p["held"]["sharpe_ratio"], rel=1e-12)
+        assert "costs" not in p["in_sample"]
+    assert "Sharpe ratio after a one-way cost per unit traded of" in printed
     in_sample = split["portfolios"]["minimum_cvar"]["in_sample"]
     assert in_sample["cvar"] == pytest.approx(minimum_cvar(before, 0.95)[1], rel=1e-9)
 
@@ -417,6 +428,10 @@ def test_the_command_measures_against_the_bill_over_the_days_it_covers(
     history = portfolio(after, held)
     assert entry["held"]["sharpe_ratio"] == pytest.approx(
         sharpe_ratio(history, 252, rate.loc[after.index]), rel=1e-12
+    )
+    # After costs too, against the bill day by day.
+    assert entry["held"]["costs"] == costs.held(
+        after, entry["weights"], before.index[-1], rate.loc[after.index]
     )
     assert entry["in_sample"]["sharpe_ratio"] == pytest.approx(
         sharpe_ratio(portfolio(before, held), 252, rate.loc[before.index]), rel=1e-12

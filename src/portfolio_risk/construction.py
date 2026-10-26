@@ -33,7 +33,8 @@ daily total returns: equal weights, inverse volatility, risk parity, the minimum
 variance and tangency portfolios of the frontier, and minimum CVaR. Each is chosen
 from the whole history, and from the returns up to each of a few split dates and then
 held after it, rebalanced every close: what it was in the data it was chosen from, and
-what it did after. With ``--risk-free bills`` the Sharpe ratios are against the daily
+what it did after; held, each is also charged for its trades as in the frontier
+command (``costs.held``). With ``--risk-free bills`` the Sharpe ratios are against the daily
 Treasury bill rate, over the days the factor cache covers, and the tangency portfolio
 is chosen at the bill's mean rate over the returns it is chosen from (see
 ``frontier.constant_rate``).
@@ -53,7 +54,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from portfolio_risk import french, frontier, risk
+from portfolio_risk import costs, french, frontier, risk
 from portfolio_risk import returns as ret
 from portfolio_risk.data import (
     DEFAULT_CACHE,
@@ -305,12 +306,16 @@ def _held_out(
     if isinstance(risk_free, pd.Series):
         # The rate the tangency portfolio was chosen at.
         out["constant_rate"] = frontier.constant_rate(risk_free, before.index)
+    rates = frontier.rates_on(risk_free, after.index)
     return out | {
         "portfolios": {
             name: {
                 "weights": {str(t): float(v) for t, v in w.items()},
                 "in_sample": describe(before, w, first_close, risk_free, level),
-                "held": describe(after, w, before.index[-1], risk_free, level),
+                "held": {
+                    **describe(after, w, before.index[-1], risk_free, level),
+                    "costs": costs.held(after, w.to_dict(), before.index[-1], rates),
+                },
             }
             for name, w in chosen.items()
         },
@@ -401,6 +406,7 @@ def _print(result: dict[str, Any]) -> None:
             f"{then['first_return']} to {then['last_return']}"
         )
         _rows(split["portfolios"], "held")
+        costs.print_held({name: p["held"]["costs"] for name, p in split["portfolios"].items()})
 
 
 def main(argv: Sequence[str] | None = None) -> int:
