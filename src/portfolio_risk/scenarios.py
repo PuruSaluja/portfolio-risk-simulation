@@ -417,7 +417,8 @@ def _print(result: dict[str, Any]) -> None:
     if not result["stress"]:
         print("\nno stress period lies within the data")
     for entry in result["stress"]:
-        print(f"\n{entry['period']}, {entry['start']} to {entry['end']} ({entry['days']} days)")
+        days = f"{entry['days']} day{'s' if entry['days'] != 1 else ''}"
+        print(f"\n{entry['period']}, {entry['start']} to {entry['end']} ({days})")
         print("  funds: " + ", ".join(f"{t} {r:.1%}" for t, r in entry["funds"].items()))
         rules = result["rules"]
         print(f"  {'':12}" + "".join(f" {rule:>10}" for rule in rules))

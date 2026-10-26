@@ -623,6 +623,9 @@ def test_daily_rates_must_cover_every_day_of_the_returns() -> None:
         fr.rates_on(rates, later)
     with pytest.raises(ValueError, match="no risk-free rate"):
         fr.constant_rate(rates, later)
+    one_more = pd.bdate_range("2024-01-01", periods=31)
+    with pytest.raises(ValueError, match=r"no risk-free rate on 2024-02-12 \(1 day\)"):
+        fr.rates_on(rates, one_more)
 
 
 def factor_cache(tmp_path: Path, end="2024-11-29") -> Path:

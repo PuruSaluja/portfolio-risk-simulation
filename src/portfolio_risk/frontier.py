@@ -377,7 +377,8 @@ def rates_on(risk_free: Rate, days: pd.DatetimeIndex) -> Rate:
         return risk_free
     missing = days.difference(risk_free.index)
     if len(missing):
-        raise ValueError(f"no risk-free rate on {missing[0].date()} ({len(missing)} days)")
+        count = f"{len(missing)} day{'s' if len(missing) != 1 else ''}"
+        raise ValueError(f"no risk-free rate on {missing[0].date()} ({count})")
     return risk_free.loc[days]
 
 

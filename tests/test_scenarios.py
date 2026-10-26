@@ -388,6 +388,12 @@ def test_the_command_compares_two_rules_with_the_days_shuffled(tmp_path: Path, c
     assert "shuffles of them" not in capsys.readouterr().out
 
 
+def test_a_one_day_period_is_one_day(tmp_path: Path, capsys) -> None:
+    argv = ["--cache", str(cache(tmp_path)), "--mix", "equal", "--rule", "never"]
+    assert main([*argv, "--period", "2024-04-30:2024-05-01"]) == 0
+    assert "2024-04-30 to 2024-05-01 (1 day)" in capsys.readouterr().out
+
+
 def test_a_named_mix_may_be_written_in_any_case(tmp_path: Path) -> None:
     out = tmp_path / "s.json"
     argv = ["--cache", str(cache(tmp_path)), "--json", str(out), "--rule", "Daily"]
