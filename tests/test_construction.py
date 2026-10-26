@@ -382,6 +382,9 @@ def test_the_command_measures_against_the_bill_over_the_days_it_covers(
     assert "499 daily returns, 2023-01-03 to 2024-11-29; risk-free rate one-month " in printed
     written = json.loads(out.read_text(encoding="utf-8"))
     assert written["risk_free"] == "one-month Treasury bill"
+    # The constant rate picks the tangency portfolio; there are no expected ratios here.
+    assert f"(tangency portfolio at its mean, {written['constant_rate']:.2%})" in printed
+    assert "expected ratios" not in printed
     assert written["factors_sha256"] == french.read_manifest(factors)["sha256"]
     rate = french.daily_risk_free(french.load_factors(factors)).loc["2023-01-03":]
     daily = total_returns(load_cache(path)).loc[: rate.index[-1]]

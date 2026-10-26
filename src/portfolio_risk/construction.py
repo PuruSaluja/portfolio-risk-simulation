@@ -386,7 +386,8 @@ def _print(result: dict[str, Any]) -> None:
     cap = "" if result["max_weight"] == 1.0 else f", at most {result['max_weight']:.0%} a fund"
     print(
         f"{result['daily_returns']} daily returns, {result['first_return']} to "
-        f"{result['last_return']}; risk-free rate {frontier.rate_text(result)}; one day's "
+        f"{result['last_return']}; risk-free rate "
+        f"{frontier.rate_text(result, 'tangency portfolio')}; one day's "
         f"value at risk and CVaR at {result['level']:.0%}; long only{cap}"
     )
     print("top risk: the largest share of the portfolio's variance any one fund contributes\n")

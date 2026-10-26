@@ -639,6 +639,7 @@ def test_the_command_measures_against_the_bill_over_the_days_it_covers(
     assert "risk-free rate one-month Treasury bill, " in printed
     written = json.loads(out.read_text(encoding="utf-8"))
     assert written["risk_free"] == "one-month Treasury bill"
+    assert f"(expected ratios at its mean, {written['constant_rate']:.2%})" in printed
     assert written["factors_sha256"] == french.read_manifest(factors)["sha256"]
     rate = french.daily_risk_free(french.load_factors(factors)).loc["2023-01-03":]
     daily = total_returns(load_cache(path)).loc[: rate.index[-1]]

@@ -564,13 +564,14 @@ def _weights_text(weights: dict[str, float]) -> str:
     return ", ".join(f"{t} {v:.1%}" for t, v in weights.items() if v >= 0.0005) or "-"
 
 
-def rate_text(result: dict[str, Any]) -> str:
-    """The risk-free rate as the commands print it."""
+def rate_text(result: dict[str, Any], constant_for: str = "expected ratios") -> str:
+    """The risk-free rate as the commands print it; for daily rates, what the constant
+    rate of their mean is used for."""
     if "risk_free_compound" not in result:
         return f"{result['risk_free']:.2%} a year"
     return (
         f"{result['risk_free']}, {result['risk_free_compound']:.2%} a year compounded "
-        f"(expected ratios at its mean, {result['constant_rate']:.2%})"
+        f"({constant_for} at its mean, {result['constant_rate']:.2%})"
     )
 
 
