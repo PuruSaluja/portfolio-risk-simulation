@@ -110,6 +110,8 @@ class Trades:
     target: np.ndarray
     days: np.ndarray
     drifted: np.ndarray
+    # The funds, in the order of ``target``'s weights.
+    funds: tuple[str, ...] = ()
 
     @property
     def turnover(self) -> np.ndarray:
@@ -130,21 +132,37 @@ def trades(test: Backtest, returns: pd.DataFrame) -> Trades:
     before = np.vstack([target, after[:-1]]) * (1.0 + values)
     before /= before.sum(axis=1, keepdims=True)
     days = test.rebalanced.to_numpy()
-    return Trades(test.returns, target, days, before[days])
+    funds = tuple(str(t) for t in test.weights.columns)
+    return Trades(test.returns, target, days, before[days], funds)
 
 
-def _check_cost(cost: float | np.ndarray, n: int) -> np.ndarray:
-    k = np.broadcast_to(np.asarray(cost, dtype="float64"), (n,))
+# A one-way cost per unit traded: one for every fund, one per fund, or a DataFrame of
+# one per fund on each of the backtest's dates.
+Cost = float | np.ndarray | pd.DataFrame
+
+
+def _check_cost(cost: Cost, trades: Trades) -> np.ndarray:
+    """The costs as an array: one per fund, or a row per trading close."""
+    if isinstance(cost, pd.DataFrame):
+        if not cost.index.equals(trades.gross.index) or [str(c) for c in cost.columns] != list(
+            trades.funds
+        ):
+            raise ValueError(
+                "costs by day must be on the backtest's dates, a column per fund in its order"
+            )
+        k = cost.to_numpy(dtype="float64")[trades.days]
+    else:
+        k = np.broadcast_to(np.asarray(cost, dtype="float64"), (len(trades.target),))
     if not np.isfinite(k).all() or (k < 0.0).any() or (k > HIGHEST).any():
         raise ValueError(f"a one-way cost is from 0 to {HIGHEST:.0%} of what is traded")
     return k
 
 
-def paid(trades: Trades, cost: float | np.ndarray) -> pd.Series:
+def paid(trades: Trades, cost: Cost) -> pd.Series:
     """The share of the portfolio's value paid in costs at each close (0 where it does
-    not trade), at a one-way ``cost`` per unit traded, one for all funds or one each."""
+    not trade), at a one-way ``cost`` per unit traded (see ``Cost``)."""
     w, d = trades.target, trades.drifted
-    k = _check_cost(cost, len(w))
+    k = _check_cost(cost, trades)
     v = np.ones(len(d))
     # Newton's method: exact after at most one step per fund (see above), one more to
     # spare.
@@ -156,13 +174,13 @@ def paid(trades: Trades, cost: float | np.ndarray) -> pd.Series:
     return pd.Series(out, index=trades.gross.index, name="paid")
 
 
-def net_returns(trades: Trades, cost: float | np.ndarray) -> pd.Series:
+def net_returns(trades: Trades, cost: Cost) -> pd.Series:
     """The backtest's daily returns after paying ``cost`` on every trade."""
     v = 1.0 - paid(trades, cost).to_numpy()
     return pd.Series((1.0 + trades.gross.to_numpy()) * v - 1.0, index=trades.gross.index)
 
 
-def summarise(trades: Trades, cost: float | np.ndarray, periods_per_year: float) -> dict:
+def summarise(trades: Trades, cost: Cost, periods_per_year: float) -> dict:
     """Compound return a year before and after costs, the drag (the difference), and the
     costs paid and the one-way turnover, a year."""
     years = len(trades.gross) / periods_per_year

@@ -56,7 +56,8 @@ def brute_force(returns, weights, rule, k):
         else:
             due = t < len(values) - 1 and np.abs(d - target).max() > band
         if due:
-            holdings = target * root(target, d, k) * total
+            k_t = k.iloc[t].to_numpy() if isinstance(k, pd.DataFrame) else k
+            holdings = target * root(target, d, k_t) * total
         out.append(holdings.sum() / start - 1.0)
     return np.array(out)
 
@@ -152,6 +153,36 @@ def test_net_returns_match_paying_the_costs_inside_the_loop(rule) -> None:
         np.testing.assert_allclose(
             costs.net_returns(trades, k), brute_force(returns, weights, rule, k), atol=1e-15
         )
+
+
+@pytest.mark.parametrize("rule", ["daily", "monthly", "band:0.03"])
+def test_costs_that_change_by_day_and_fund_are_paid_on_each_day(rule) -> None:
+    returns = frame(days=400, funds=4, seed=4, scale=0.02)
+    weights = {"F0": 0.1, "F1": 0.2, "F2": 0.3, "F3": 0.4}
+    made = costs.trades(backtest(returns, weights, rule), returns)
+    rng = np.random.default_rng(5)
+    by_day = pd.DataFrame(
+        rng.uniform(0.0, 0.01, returns.shape), index=returns.index, columns=returns.columns
+    )
+    np.testing.assert_allclose(
+        costs.net_returns(made, by_day), brute_force(returns, weights, rule, by_day), atol=1e-15
+    )
+    # The same cost every day is the constant cost.
+    flat = pd.DataFrame(0.002, index=returns.index, columns=returns.columns)
+    assert costs.net_returns(made, flat).equals(costs.net_returns(made, 0.002))
+
+
+def test_costs_by_day_off_the_backtest_s_dates_or_funds_are_refused() -> None:
+    returns = frame()
+    made = costs.trades(backtest(returns, {"F0": 0.5, "F1": 0.5}, "daily"), returns)
+    good = pd.DataFrame(0.001, index=returns.index, columns=returns.columns)
+    for bad in (good.iloc[1:], good[["F2", "F1", "F0"]], good.set_axis(["a", "b", "c"], axis=1)):
+        with pytest.raises(ValueError, match="on the backtest's dates, a column per fund"):
+            costs.paid(made, bad)
+    negative = good.copy()
+    negative.iloc[3] = -0.001
+    with pytest.raises(ValueError, match="one-way cost is from 0"):
+        costs.paid(made, negative)
 
 
 def test_without_costs_the_returns_are_the_backtest_s() -> None:
