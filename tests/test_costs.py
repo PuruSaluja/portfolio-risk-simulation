@@ -333,6 +333,8 @@ def test_the_command_refuses_bad_input_plainly(tmp_path: Path, capsys) -> None:
         (["--cost", "-0.001"], "not negative"),
         (["--spread", "wide"], "a spread is a number such as 0.0002"),
         (["--spread", "AAA=x"], "a spread is a number such as 0.0002"),
+        (["--spread", "=0.001"], "a spread is a number such as 0.0002"),
+        (["--spread", "AAA=0.001, =0.002"], "a spread is a number such as 0.0002"),
         (["--spread", "ZZZ=0.001"], "no returns for ZZZ"),
         (["--spread", "AAA=0.001,aaa=0.002"], "given twice"),
         (["--compare", "daily"], "two different rules"),

@@ -351,7 +351,7 @@ def _costs(texts: Sequence[str] | None) -> tuple[float, ...]:
         ) from None
 
 
-def _spreads(text: str, tickers: Sequence[str]) -> float | dict[str, float]:
+def _spreads(text: str) -> float | dict[str, float]:
     """One spread, ``0.0002``, or one per fund, ``SPY=0.0001,EEM=0.0006``."""
     bad = ValueError(
         f"a spread is a number such as 0.0002, or one per fund such as "
@@ -364,6 +364,8 @@ def _spreads(text: str, tickers: Sequence[str]) -> float | dict[str, float]:
         values = [(ticker.strip().upper(), float(value)) for ticker, _, value in parts]
     except ValueError:
         raise bad from None
+    if any(not ticker for ticker, _ in values):
+        raise bad
     out = dict(values)
     if len(out) != len(values):
         raise ValueError("a fund's spread is given twice")
@@ -410,7 +412,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         prices = load_cache(args.cache)
         sha256 = read_manifest(args.cache)["sha256"]
-        tickers = list(dict.fromkeys(str(t) for t in prices["ticker"]))
         compare = (
             COMPARE
             if args.compare is None
@@ -423,7 +424,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.mix or tuple(scenarios.MIXES),
                 args.rule or scenarios.RULES,
                 _costs(args.cost),
-                _spreads(args.spread, tickers),
+                _spreads(args.spread),
                 compare,
             ),
         }
