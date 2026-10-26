@@ -36,6 +36,10 @@ scaled as the compound return is, that bounds how fast the return can fall
 (``fall_bound``). A lead of ``g`` cannot be gone within ``g`` over that bound, so the
 search steps that far each time and cannot step over a crossing.
 
+``held`` charges a portfolio held at fixed weights, such as the frontier's and the
+construction's after a split, under a few rules at each cost: its compound return and
+Sharpe ratio after costs.
+
 ``python -m portfolio_risk.costs`` backtests the scenario mixes under every rule over
 the cache's daily total returns at a few one-way costs, and gives the break-even cost
 for pairs of rules. The cache holds closing prices only, so it cannot measure what the
@@ -58,7 +62,7 @@ import numpy as np
 import pandas as pd
 
 from portfolio_risk import returns as ret
-from portfolio_risk import scenarios
+from portfolio_risk import risk, scenarios
 from portfolio_risk.data import (
     DEFAULT_CACHE,
     DataError,
@@ -68,6 +72,7 @@ from portfolio_risk.data import (
     wide,
 )
 from portfolio_risk.montecarlo import check_weights
+from portfolio_risk.risk import Rate
 from portfolio_risk.scenarios import Backtest, backtest
 
 # The highest one-way cost per unit traded anything here accepts: 10%, far above any
@@ -413,6 +418,79 @@ def run(
             for pair in compare
         ],
     }
+
+
+# The rules ``held`` holds a portfolio under: every close, as the frontier and
+# construction commands hold their portfolios before costs, and two that trade less.
+HELD_RULES = ("daily", "monthly", "band:0.05")
+
+
+def held(
+    returns: pd.DataFrame,
+    weights: Mapping[str, float],
+    first_close: pd.Timestamp,
+    risk_free: Rate = 0.0,
+    rules: Sequence[str] = HELD_RULES,
+    levels: Sequence[float] = LEVELS,
+) -> dict[str, Any]:
+    """A portfolio invested at ``weights`` at ``first_close`` and held over ``returns``
+    under each of ``rules``: its rebalances, its one-way turnover a year, and at each
+    one-way cost in ``levels`` (the same for every fund) its compound return a year and
+    Sharpe ratio after costs.
+
+    ``risk_free`` is a compound annual rate, or daily rates on the returns' dates,
+    subtracted day by day; the Sharpe ratio is ``None`` where the excess returns never
+    vary.
+    """
+    tickers = [str(t) for t in returns.columns]
+    if not rules or not levels:
+        raise ValueError("needs at least one rule and one cost")
+    if len({scenarios._rule_key(rule) for rule in rules}) != len(rules):
+        raise ValueError("a rule is named twice")
+    if len(set(levels)) != len(levels):
+        raise ValueError("a cost is given twice")
+    per_level = [per_unit(level, 0.0, tickers) for level in levels]
+    per_year = ret.observed_periods_per_year(pd.DatetimeIndex([first_close, *returns.index]))
+    years = len(returns) / per_year
+    days = ret.TRADING_DAYS_PER_YEAR
+    out: dict[str, Any] = {}
+    for rule in rules:
+        test = backtest(returns, weights, rule)
+        made = trades(test, returns)
+        at = []
+        for level, k in zip(levels, per_level, strict=True):
+            net = net_returns(made, k)
+            at.append(
+                {
+                    "cost": level,
+                    "compound_return": float(ret.annualised_return(net, per_year)),
+                    "sharpe_ratio": risk.or_none(risk.sharpe_ratio, net, days, risk_free),
+                }
+            )
+        out[rule] = {
+            "rebalances": test.rebalances,
+            "turnover_per_year": float(made.turnover.sum() / years),
+            "costs": at,
+        }
+    return out
+
+
+def print_held(portfolios: Mapping[str, Mapping[str, Any]]) -> None:
+    """Rows of ``held``'s figures, one per portfolio and rule: the Sharpe ratio after
+    each cost."""
+    if not portfolios:
+        return
+    first = next(iter(portfolios.values()))
+    levels = [c["cost"] for c in next(iter(first.values()))["costs"]]
+    header = "".join(f" {_bp(level):>7}" for level in levels)
+    print(f"  Sharpe ratio after a one-way cost per unit traded of\n  {'':18} {'rule':10}{header}")
+    for name, by_rule in portfolios.items():
+        for rule, figures in by_rule.items():
+            ratios = "".join(
+                f" {'-' if c['sharpe_ratio'] is None else format(c['sharpe_ratio'], '.3f'):>7}"
+                for c in figures["costs"]
+            )
+            print(f"  {name:18} {rule:10}{ratios}")
 
 
 def _without_rules(found: dict[str, Any]) -> dict[str, Any]:

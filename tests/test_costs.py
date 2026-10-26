@@ -10,8 +10,9 @@ import pytest
 from portfolio_risk import costs
 from portfolio_risk.costs import main
 from portfolio_risk.data import COLUMNS, load_cache, write_cache
-from portfolio_risk.montecarlo import check_weights
+from portfolio_risk.montecarlo import check_weights, historical_portfolio_returns
 from portfolio_risk.returns import annualised_return, observed_periods_per_year, total_returns
+from portfolio_risk.risk import sharpe_ratio
 from portfolio_risk.scenarios import backtest
 
 
@@ -208,6 +209,86 @@ def test_the_summary_s_drag_is_the_return_costs_take() -> None:
     assert out["paid_per_year"] == pytest.approx(costs.paid(trades, 0.001).sum() / years)
     # Each unit of one-way turnover is a sell and a buy: about twice the cost each.
     assert out["paid_per_year"] == pytest.approx(2 * 0.001 * out["turnover_per_year"], rel=1e-3)
+
+
+def test_a_held_portfolio_is_charged_under_each_rule_at_each_cost() -> None:
+    returns = frame(days=500, funds=4, seed=6, scale=0.015)
+    weights = {"F0": 0.1, "F1": 0.0, "F2": 0.5, "F3": 0.4}
+    first = returns.index[0] - pd.Timedelta(days=3)
+    per_year = observed_periods_per_year(pd.DatetimeIndex([first, *returns.index]))
+    rates = pd.Series(np.linspace(0.0, 0.0002, 500), index=returns.index)
+    levels = (0.0, 0.0005, 0.01)
+    for risk_free in (0.0, 0.03, rates):
+        out = costs.held(returns, weights, first, risk_free, levels=levels)
+        assert list(out) == ["daily", "monthly", "band:0.05"]
+        for rule, figures in out.items():
+            test = backtest(returns, weights, rule)
+            assert figures["rebalances"] == test.rebalances
+            assert figures["turnover_per_year"] == pytest.approx(
+                test.turnover.sum() / (500 / per_year), rel=1e-12
+            )
+            assert [c["cost"] for c in figures["costs"]] == list(levels)
+            for c in figures["costs"]:
+                # Against the loop that holds the funds in money and pays inside it.
+                net = pd.Series(brute_force(returns, weights, rule, c["cost"]), returns.index)
+                assert c["compound_return"] == pytest.approx(
+                    annualised_return(net, per_year), rel=1e-12
+                )
+                assert c["sharpe_ratio"] == pytest.approx(
+                    sharpe_ratio(net, 252, risk_free), rel=1e-12
+                )
+        # Costs only take away, and take more from the rule that trades more.
+        for figures in out.values():
+            compound = [c["compound_return"] for c in figures["costs"]]
+            assert compound == sorted(compound, reverse=True)
+        daily, monthly = (out[r]["costs"] for r in ("daily", "monthly"))
+        assert (
+            daily[0]["compound_return"] - daily[-1]["compound_return"]
+            > monthly[0]["compound_return"] - monthly[-1]["compound_return"]
+        )
+
+
+def test_held_daily_without_costs_is_the_portfolio_rebalanced_every_close() -> None:
+    returns = frame(days=300, funds=3, seed=7)
+    weights = {"F0": 0.2, "F1": 0.3, "F2": 0.5}
+    first = returns.index[0] - pd.Timedelta(days=1)
+    daily = costs.held(returns, weights, first, 0.02, rules=["daily"], levels=[0.0])["daily"]
+    history = historical_portfolio_returns(returns, weights)
+    per_year = observed_periods_per_year(pd.DatetimeIndex([first, *returns.index]))
+    zero = daily["costs"][0]
+    assert zero["compound_return"] == pytest.approx(annualised_return(history, per_year), rel=1e-13)
+    assert zero["sharpe_ratio"] == pytest.approx(sharpe_ratio(history, 252, 0.02), rel=1e-12)
+    # Every close but the last trades.
+    assert daily["rebalances"] == 299
+
+
+def test_held_gives_no_ratio_for_returns_that_never_vary() -> None:
+    returns = pd.DataFrame(0.0, index=pd.bdate_range("2024-01-01", periods=30), columns=["A", "B"])
+    first = returns.index[0] - pd.Timedelta(days=3)
+    out = costs.held(returns, {"A": 0.5, "B": 0.5}, first, levels=[0.0, 0.001])
+    for figures in out.values():
+        assert [c["sharpe_ratio"] for c in figures["costs"]] == [None, None]
+        # Nothing drifts, so nothing is traded and nothing paid.
+        assert [c["compound_return"] for c in figures["costs"]] == [0.0, 0.0]
+
+
+@pytest.mark.parametrize(
+    "rules, levels, message",
+    [
+        ([], (0.0,), "at least one rule and one cost"),
+        (["daily"], (), "at least one rule and one cost"),
+        (["daily", "Daily"], (0.0,), "a rule is named twice"),
+        (["band:0.05", "band:.05"], (0.0,), "a rule is named twice"),
+        (["daily"], (0.001, 0.001), "a cost is given twice"),
+        (["daily"], (-0.001,), "not negative"),
+        (["daily"], (0.2,), "above 10%"),
+        (["weekly"], (0.0,), "a rule is daily"),
+    ],
+)
+def test_held_refuses_bad_rules_and_costs(rules, levels, message) -> None:
+    returns = frame(days=50)
+    with pytest.raises(ValueError, match=message):
+        costs.held(returns, {"F0": 1.0}, returns.index[0], rules=rules, levels=levels)
 
 
 def gap(returns, weights, rules, k):
