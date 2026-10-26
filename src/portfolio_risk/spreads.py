@@ -12,6 +12,25 @@ adjusted for splits as the price cache's close is (and that close, to the bit), 
 that a day's three prices are on one basis. Every day's low is at most its close and
 its close at most its high.
 
+``abdi_ranaldo``
+    Abdi and Ranaldo (2017): with ``c`` the log close and ``eta`` the mean of the log
+    high and log low, ``S^2 = 4 E[(c_t - eta_t)(c_t - eta_{t+1})]``; a month's estimate
+    is ``sqrt(max(4 m, 0))``, ``m`` the mean of the products over the two-day windows
+    starting in it.
+``corwin_schultz``
+    Corwin and Schultz (2012): from ``beta``, the sum of the two days' squared log
+    ranges, and ``gamma``, the squared log range over both days, ``alpha = (sqrt(2
+    beta) - sqrt(beta)) / k - sqrt(gamma / k)`` with ``k = 3 - 2 sqrt(2)``, and
+    ``S = 2 (e^alpha - 1) / (1 + e^alpha)``; the second day's high and low are moved by
+    any overnight gap past the first day's close, negative two-day estimates count as
+    0, and a month's estimate is their mean.
+
+Both assume that the spread, not the efficient price's movement within the day, sets
+the close's place in the day's range. ``simulate`` builds bars from a known spread
+(390 trades a day at the bid or the ask around a random-walk mid-price) to see how far
+that holds: they recover a spread that is wide beside the day's volatility, and read
+one that is narrow beside it as many times wider, with many months at zero.
+
 Run ``python -m portfolio_risk.spreads fetch`` to download the ranges for the price
 cache's window into ``data/ranges.csv``, and ``python -m portfolio_risk.spreads
 verify`` to check a cache.
@@ -30,6 +49,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from portfolio_risk.data import (
@@ -246,6 +266,96 @@ def load_ranges(cache: Path = DEFAULT_CACHE) -> pd.DataFrame:
     if len(ranges) != manifest["rows"]:
         raise DataError(f"{cache}: {len(ranges)} rows, the manifest says {manifest['rows']}")
     return ranges
+
+
+def _bars(high: pd.Series, low: pd.Series, close: pd.Series) -> None:
+    for series in (high, low, close):
+        if not isinstance(series, pd.Series) or not isinstance(series.index, pd.DatetimeIndex):
+            raise ValueError("the highs, lows and closes are Series on a date index")
+    if not (high.index.equals(low.index) and high.index.equals(close.index)):
+        raise ValueError("the highs, lows and closes must be on the same dates")
+    if len(close) < 2:
+        raise ValueError("needs at least two days of bars")
+    values = np.array([high, low, close], dtype="float64")
+    if not np.isfinite(values).all() or (values <= 0).any():
+        raise ValueError("the highs, lows and closes must be positive numbers")
+    if (low > close).any() or (close > high).any():
+        raise ValueError("a close is outside its day's range")
+
+
+def _windows(values: pd.Series, skip: pd.DatetimeIndex | None) -> pd.Series:
+    """Two-day figures indexed by their first day: the last day, which has no second,
+    dropped, and so are the windows whose second day is in ``skip`` (a distribution or
+    split day, when the close moves for other reasons)."""
+    second = values.index[1:]
+    values = values.iloc[:-1]
+    if skip is not None:
+        values = values[~second.isin(pd.DatetimeIndex(skip))]
+    return values
+
+
+def _monthly(values: pd.Series) -> pd.Series:
+    return values.groupby(values.index.to_period("M")).mean()
+
+
+def abdi_ranaldo(
+    high: pd.Series, low: pd.Series, close: pd.Series, skip: pd.DatetimeIndex | None = None
+) -> pd.Series:
+    """Monthly spread estimates, as a share of the price, by Abdi and Ranaldo (see
+    above); two-day windows ending on a day in ``skip`` are left out."""
+    _bars(high, low, close)
+    c = np.log(close)
+    eta = (np.log(high) + np.log(low)) / 2.0
+    products = _windows((c - eta) * (c - eta.shift(-1)), skip)
+    return np.sqrt(np.maximum(4.0 * _monthly(products), 0.0)).rename("spread")
+
+
+def corwin_schultz(
+    high: pd.Series, low: pd.Series, close: pd.Series, skip: pd.DatetimeIndex | None = None
+) -> pd.Series:
+    """Monthly spread estimates, as a share of the price, by Corwin and Schultz (see
+    above); two-day windows ending on a day in ``skip`` are left out."""
+    _bars(high, low, close)
+    high_next, low_next = high.shift(-1), low.shift(-1)
+    # An overnight gap past the first day's close moves the second day's range back.
+    down = (low_next - close).clip(lower=0.0)
+    up = (close - high_next).clip(lower=0.0)
+    high_next, low_next = high_next - down + up, low_next - down + up
+    beta = np.log(high / low) ** 2 + np.log(high_next / low_next) ** 2
+    gamma = np.log(np.maximum(high, high_next) / np.minimum(low, low_next)) ** 2
+    k = 3.0 - 2.0 * math.sqrt(2.0)
+    alpha = (np.sqrt(2.0 * beta) - np.sqrt(beta)) / k - np.sqrt(gamma / k)
+    two_day = (2.0 * np.expm1(alpha) / (1.0 + np.exp(alpha))).clip(lower=0.0)
+    return _monthly(_windows(two_day, skip)).rename("spread")
+
+
+def simulate(
+    spread: float,
+    daily_volatility: float,
+    days: int,
+    *,
+    trades_per_day: int = 390,
+    seed: int = 0,
+    start: str = "2006-02-01",
+) -> pd.DataFrame:
+    """Daily bars from a known spread: the mid-price a random walk with
+    ``daily_volatility`` over each day, every trade at the ask, ``mid (1 + spread / 2)``,
+    or the bid, ``mid (1 - spread / 2)``, at random; the high and low are the day's
+    highest and lowest trade, the close its last."""
+    if not 0.0 <= spread < 2.0 or not daily_volatility >= 0.0:
+        raise ValueError("needs a spread from 0 to 2 and a volatility of at least 0")
+    if days < 2 or trades_per_day < 1:
+        raise ValueError("needs at least two days and one trade a day")
+    rng = np.random.default_rng(seed)
+    steps = days * trades_per_day
+    log_mid = np.cumsum(rng.normal(0.0, daily_volatility / math.sqrt(trades_per_day), steps))
+    side = rng.choice([-1.0, 1.0], steps)
+    prices = (np.exp(log_mid) * (1.0 + side * spread / 2.0)).reshape(days, trades_per_day)
+    index = pd.bdate_range(start, periods=days)
+    return pd.DataFrame(
+        {"high": prices.max(axis=1), "low": prices.min(axis=1), "close": prices[:, -1]},
+        index=index,
+    )
 
 
 def _print_summary(manifest: dict[str, Any]) -> None:
