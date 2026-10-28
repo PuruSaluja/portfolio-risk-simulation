@@ -212,3 +212,49 @@ def test_a_missing_or_damaged_extract_is_named(folder, tmp_path, capsys, damage,
 def test_a_folder_that_is_not_there_is_refused(tmp_path: Path) -> None:
     with pytest.raises(DashboardError, match="is not a folder of extracts"):
         read(tmp_path / "none")
+
+
+def write_daily(folder: Path, rows: list[dict]) -> None:
+    columns = list(COLUMNS["daily"])
+    lines = [",".join(columns)] + [",".join(str(r[c]) for c in columns) for r in rows]
+    text = "".join(f"{line}\n" for line in lines)
+    (folder / "daily.csv").write_text(text, encoding="utf-8")
+
+
+def whole_daily(tables) -> list[dict]:
+    zero = [r for r in tables["risk_metrics"] if r["risk_free"] == "zero"]
+    days = [zero[0]["first_return"], "2015-06-01", zero[0]["last_return"]]
+    return [
+        {"date": d, "series": r["series"], "daily_return": 0.0, "wealth": 1.0, "drawdown": 0.0}
+        for r in zero for d in days
+    ]  # fmt: skip
+
+
+def test_a_daily_file_over_the_risk_measures_days_is_drawn(folder, tables, tmp_path) -> None:
+    target = copy(folder, tmp_path)
+    write_daily(target, whole_daily(tables))
+    assert len(read(target)["daily"]) == 9 * 3
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (lambda rows: [r for r in rows if r["date"] != "2026-09-30"], "to 2026-09-29"),
+        (lambda rows: [r for r in rows if r["series"] != "VNQ"], "holds SPY"),
+        (
+            lambda rows: [r for r in rows if (r["series"], r["date"]) != ("GLD", "2015-06-01")],
+            "does not have every day for GLD",
+        ),  # fmt: skip
+    ],
+)
+def test_a_daily_file_from_another_window_is_refused(
+    folder, tables, tmp_path, capsys, change, message
+) -> None:
+    target = copy(folder, tmp_path)
+    rows = change(whole_daily(tables))
+    if message == "to 2026-09-29":
+        rows = [r | {"date": "2026-09-29"} if r["date"] == "2015-06-01" else r for r in rows]
+    write_daily(target, rows)
+    assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
+    assert message in capsys.readouterr().err
+    assert not (tmp_path / "d.html").exists()

@@ -115,7 +115,30 @@ def read(folder: Path) -> dict[str, list[dict]]:
             "write the extracts with portfolio_risk.extracts first"
         )
     names = [n for n in COLUMNS if (folder / f"{n}.csv").is_file()]
-    return {n: read_csv(folder / f"{n}.csv", n) for n in names}
+    tables = {n: read_csv(folder / f"{n}.csv", n) for n in names}
+    if "daily" in tables:
+        check_daily(tables, folder / "daily.csv")
+    return tables
+
+
+def check_daily(tables: Mapping[str, list[dict]], path: Path) -> None:
+    """Refuse a ``daily.csv`` that is not of the risk measures' series and days, such as
+    one left in the folder by an earlier run over another window (``--no-prices`` does
+    not write it)."""
+    zero = _where(tables["risk_metrics"], risk_free="zero")
+    series = [r["series"] for r in zero]
+    days = {r["date"] for r in tables["daily"]}
+    found = list(dict.fromkeys(r["series"] for r in tables["daily"]))
+    first, last = zero[0]["first_return"], zero[0]["last_return"]
+    if found != series or min(days) != first or max(days) != last:
+        raise DashboardError(
+            f"{path} holds {', '.join(found)} from {min(days)} to {max(days)}, but the risk "
+            f"measures are of {', '.join(series)} from {first} to {last}: write the "
+            "extracts again with the price cache, or remove daily.csv"
+        )
+    for s in series:
+        if sum(r["series"] == s for r in tables["daily"]) != len(days):
+            raise DashboardError(f"{path} does not have every day for {s}")
 
 
 def _where(rows: list[dict], **match) -> list[dict]:
