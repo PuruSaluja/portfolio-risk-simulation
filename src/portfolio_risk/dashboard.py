@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import html
 import math
+import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -43,6 +45,7 @@ STRESS_RULE = "monthly"
 FRONTIER_COMMAND = ("frontier", 1.0, "zero")
 CONSTRUCTION_COMMAND = ("construction", 1.0, "zero")
 FACTOR_MODEL = "ff5"
+_DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
 class DashboardError(Exception):
@@ -57,6 +60,14 @@ def _parse(kind: str, text: str):
         if not math.isfinite(value):
             raise ValueError(f"not a finite number: {text!r}")
         return value
+    if kind == "date":
+        # Kept as text, which sorts and plots as a date; YYYY-MM-DD only, as written.
+        try:
+            if not _DATE.match(text):
+                raise ValueError
+            dt.date.fromisoformat(text)
+        except ValueError:
+            raise ValueError(f"not a date as YYYY-MM-DD: {text!r}") from None
     return text
 
 
@@ -126,6 +137,8 @@ def check_daily(tables: Mapping[str, list[dict]], path: Path) -> None:
     one left in the folder by an earlier run over another window (``--no-prices`` does
     not write it)."""
     zero = _where(tables["risk_metrics"], risk_free="zero")
+    if not zero:
+        raise DashboardError("risk_metrics.csv has no rows at the zero rate, which daily.csv is of")
     series = [r["series"] for r in zero]
     days = {r["date"] for r in tables["daily"]}
     found = list(dict.fromkeys(r["series"] for r in tables["daily"]))

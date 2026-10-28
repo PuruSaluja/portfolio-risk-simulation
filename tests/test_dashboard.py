@@ -258,3 +258,29 @@ def test_a_daily_file_from_another_window_is_refused(
     assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
     assert message in capsys.readouterr().err
     assert not (tmp_path / "d.html").exists()
+
+
+@pytest.mark.parametrize("bad", ["not-a-date", "2007-13-09", "20071009", "2007-10-9"])
+def test_a_date_column_holding_something_else_is_refused(folder, tmp_path, capsys, bad) -> None:
+    target = copy(folder, tmp_path)
+    path = target / "stress.csv"
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    assert ",2007-10-09," in lines[1]
+    lines[1] = lines[1].replace(",2007-10-09,", f",{bad},", 1)
+    path.write_text("".join(lines), encoding="utf-8")
+    assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
+    assert f"stress.csv line 2: not a date as YYYY-MM-DD: '{bad}'" in capsys.readouterr().err
+    assert not (tmp_path / "d.html").exists()
+
+
+def test_daily_rows_beside_no_zero_rate_risk_rows_are_refused(
+    folder, tables, tmp_path, capsys
+) -> None:
+    target = copy(folder, tmp_path)
+    write_daily(target, whole_daily(tables))
+    path = target / "risk_metrics.csv"
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    path.write_text("".join([lines[0], *(ln for ln in lines[1:] if ",bills," in ln)]),
+                    encoding="utf-8")  # fmt: skip
+    assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
+    assert "risk_metrics.csv has no rows at the zero rate" in capsys.readouterr().err
