@@ -6,7 +6,10 @@ writes, and the same dashboard drawn with Plotly by `python -m portfolio_risk.da
 **It has not been built in Tableau**, as none was available. This file is the
 specification a Tableau workbook would follow; the Plotly page is its
 reproduction, and the tests check that every value the page plots is the
-extract's value, unchanged.
+extract's value, unchanged but for costs, drawn in basis points. The page
+draws each sheet's main view; the two companion views (each frontier
+point's weights, and the held-out portfolios after costs) are specified
+here but not drawn.
 
 ## Data sources
 

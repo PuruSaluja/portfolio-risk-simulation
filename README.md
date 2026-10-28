@@ -33,7 +33,9 @@ are measured on that history, not projected:
   ([risk parity and minimum CVaR](#risk-parity-and-minimum-cvar)).
 - **Costs decide the rebalancing rule.** Daily rebalancing's lead over
   monthly is gone at a one-way cost of 12.9 bp (equity) to 35.2 bp (equal
-  weight), and a 5-point band is the best rule from 5 bp for every mix
+  weight), and from 5 bp a 5-point band is the best of the rules that
+  rebalance for every mix; for the 60/40 and the permanent mix, never
+  rebalancing returns more still, by drifting into other portfolios
   ([trading costs](#trading-costs)).
 - **Factors explain the equity funds, not the rest.** SPY has a market beta
   of 0.99 and an R² of 0.986; the equal-weight portfolio's alpha is 0.65% a
@@ -157,8 +159,8 @@ window. Compounded, those rounded figures give 5.13% for 2025 where the
 monthly file's rates compound to 4.25%, and 0.00% for 2010 against 0.10%. The
 files' notes describe the daily rate as the simple daily rate that compounds to
 the month's rate over the month's trading days, and it is published to two
-decimals; `french.daily_risk_free` computes that rate without the rounding. Rounded, it gives
-the published figure on 5,407 of the 5,449 days. Over the window it compounds
+decimals; `french.daily_risk_free` computes that rate without the rounding.
+Rounded, it gives the published figure on 5,407 of the 5,449 days. Over the window it compounds
 to 1.74% a year.
 
 ## Returns and risk of each fund
@@ -494,8 +496,8 @@ year earned little more than the bill, so most of its zero-rate ratio was the
 bill's. (Against the zero-rate table above, a month longer, the falls look
 smaller: 17.1% for equal weight, 53.8% for AGG.) AGG's daily Sharpe ratio,
 0.59 at zero on these days (only SPY, gold and the portfolio were higher, at
-0.64 to 0.66), is 0.26 against the bill, below every equity fund's. The bill compounds to 4.25% to 5.25% a year in 2023 to
-2025 and 2006 to 2007, and to at most 0.10% in each year from 2009 to 2015
+0.64 to 0.66), is 0.26 against the bill, below every equity fund's. The
+bill compounds to 4.25% to 5.25% a year in 2023 to 2025 and 2006 to 2007, and to at most 0.10% in each year from 2009 to 2015
 and in 2021, so the gap between the two tables depends on the window.
 
 ## Scenarios: allocation mixes, rebalancing and stress periods
@@ -723,8 +725,9 @@ What they show:
   mix**, and at every cost for the 60/40 and equal weight. Daily rebalancing
   leads it for the equity and permanent mixes only below 2.7 and 2.0 bp. The
   band's lead over buy and hold for the equity and equal-weight mixes
-  outlasts any one-way cost up to 1%. Buy and hold returns the most for the 60/40 and the permanent mix at
-  any cost, by drifting into other portfolios (see the scenarios).
+  outlasts any one-way cost up to 1%. Buy and hold returns the most for the
+  60/40 and the permanent mix at any cost, by drifting into other portfolios
+  (see the scenarios).
 
 It is one history, and the costs are assumed levels: what the funds cost to
 trade sets which row applies.
