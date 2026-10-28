@@ -71,6 +71,12 @@ def test_the_frontier_chart_plots_the_extract_s_points(tables, drawn) -> None:
     funds = [r for r in tables["portfolios"] if r["max_weight"] == 1.0 and r["kind"] == "fund"]
     assert list(fig.data[2].text) == [r["name"] for r in funds]
     assert list(fig.data[2].y) == [r["expected_return"] for r in funds]
+    assert list(fig.data[2].x) == [r["volatility"] for r in funds]
+    named = [r for r in tables["portfolios"] if r["max_weight"] == 1.0 and r["kind"] == "portfolio"]
+    assert list(fig.data[3].text) == [r["name"] for r in named] != []
+    assert list(fig.data[3].x) == [r["volatility"] for r in named]
+    assert list(fig.data[3].y) == [r["expected_return"] for r in named]
+    assert len(fig.data) == 4
 
 
 def test_the_box_chart_draws_each_distribution_s_quantiles(tables, drawn) -> None:
@@ -143,10 +149,11 @@ def test_the_tail_chart_plots_each_series_99_figures(tables, drawn) -> None:
 
 def daily_rows(tables) -> list[dict]:
     series = [r["series"] for r in tables["risk_metrics"] if r["risk_free"] == "zero"]
+    # Figures differ by series and day, so a series drawn from another's rows shows.
     return [
-        {"date": d, "series": s, "daily_return": 0.01 * i, "wealth": 1 + 0.01 * i,
-         "drawdown": -0.001 * i}
-        for s in series for i, d in enumerate(["2024-01-02", "2024-01-03"], 1)
+        {"date": d, "series": s, "daily_return": 0.01 * i + k, "wealth": 1 + 0.01 * i + k,
+         "drawdown": -0.001 * i - k / 100}
+        for k, s in enumerate(series) for i, d in enumerate(["2024-01-02", "2024-01-03"], 1)
     ]  # fmt: skip
 
 
@@ -158,8 +165,14 @@ def test_without_daily_rows_the_charts_over_time_are_left_out_and_said_to_be(tab
     (title, fig), *_ = figures(with_daily)
     assert title.startswith("Each fund and the portfolio over time")
     assert len(fig.data) == 2 * 9
-    assert list(fig.data[0].y) == [1.01, 1.02]
-    assert list(fig.data[1].y) == [-0.001, -0.002]
+    rows = with_daily["daily"]
+    for growth, drawdown in zip(fig.data[::2], fig.data[1::2], strict=True):
+        assert growth.name == drawdown.name
+        mine = [r for r in rows if r["series"] == growth.name]
+        assert list(growth.x) == list(drawdown.x) == [r["date"] for r in mine]
+        assert list(growth.y) == [r["wealth"] for r in mine]
+        assert list(drawdown.y) == [r["drawdown"] for r in mine]
+    assert [t.name for t in fig.data[::2]] == list(dict.fromkeys(r["series"] for r in rows))
     assert "No daily.csv" not in page(with_daily, cdn=True)
 
 
