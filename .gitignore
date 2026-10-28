@@ -17,6 +17,10 @@ htmlcov/
 # redistributed. The manifest beside each cache is committed.
 data/*.csv
 
+# Extracts: daily.csv is built from the prices cache, so it is not
+# redistributed either; the rest are rebuilt from results/ in a second.
+extracts/
+
 # OS
 Thumbs.db
 .DS_Store
