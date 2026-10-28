@@ -7,7 +7,9 @@ plotted figure is a value from the extracts, unchanged but for costs, drawn in b
 points; the tests compare each chart's values with the files.
 
 ``daily.csv`` is built from the price cache, which is not committed. Without it the two
-charts over time are left out and the page says so.
+charts over time are left out and the page says so. Every file read must be one the
+extracts' ``manifest.json`` lists, with the checksum it gives, so files from two runs are
+never drawn together.
 
 By default the page carries Plotly's JavaScript (about 4.8 MB) so it opens offline;
 ``--cdn`` links it from Plotly's CDN instead.
@@ -18,7 +20,9 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import html
+import json
 import math
 import re
 import sys
@@ -30,7 +34,7 @@ import plotly
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from portfolio_risk.extracts import COLUMNS, KEYS, NULLABLE, RESULTS_FILES
+from portfolio_risk.extracts import COLUMNS, KEYS, MANIFEST, NULLABLE, RESULTS_FILES
 
 PALETTE = (
     "#4c78a8", "#f58518", "#54a24b", "#e45756", "#72b7b2", "#b279a2", "#eeca3b", "#9d755d",
@@ -127,10 +131,44 @@ def read(folder: Path) -> dict[str, list[dict]]:
             "write the extracts with portfolio_risk.extracts first"
         )
     names = [n for n in COLUMNS if (folder / f"{n}.csv").is_file()]
+    check_manifest(folder, [f"{n}.csv" for n in names])
     tables = {n: read_csv(folder / f"{n}.csv", n) for n in names}
     if "daily" in tables:
         check_daily(tables, folder / "daily.csv")
     return tables
+
+
+def check_manifest(folder: Path, files: list[str]) -> None:
+    """Refuse extracts that did not all come from the run that wrote ``manifest.json``:
+    a file it does not list (a ``daily.csv`` an earlier run left beside a ``--no-prices``
+    run), a file changed since, or a file it lists that is missing."""
+    path = folder / MANIFEST
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise DashboardError(
+            f"{folder} has no {MANIFEST}: write the extracts with portfolio_risk.extracts"
+        ) from None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise DashboardError(f"{path} cannot be read: {exc}") from None
+    listed = manifest.get("files") if isinstance(manifest, dict) else None
+    if not isinstance(listed, dict) or not all(
+        isinstance(e, dict) and isinstance(e.get("sha256"), str) for e in listed.values()
+    ):
+        raise DashboardError(f"{path} is not an extracts manifest (no files with checksums)")
+    for file in files:
+        if file not in listed:
+            raise DashboardError(
+                f"{folder / file} is not from the run that wrote {MANIFEST} (an earlier "
+                "run's file?): write the extracts again, or remove it"
+            )
+        if hashlib.sha256((folder / file).read_bytes()).hexdigest() != listed[file]["sha256"]:
+            raise DashboardError(
+                f"{folder / file} has changed since the extracts were written: write them again"
+            )
+    missing = sorted(set(listed) - set(files))
+    if missing:
+        raise DashboardError(f"{path} lists {', '.join(missing)}, which {folder} does not have")
 
 
 def check_daily(tables: Mapping[str, list[dict]], path: Path) -> None:

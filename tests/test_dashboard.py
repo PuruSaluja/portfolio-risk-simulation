@@ -1,3 +1,5 @@
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -199,6 +201,17 @@ def copy(folder: Path, tmp_path: Path) -> Path:
     return target
 
 
+def restamp(folder: Path) -> None:
+    """List every CSV file in the folder in its manifest as it now is, as a run of the
+    extracts would, so a test's edit reaches the check it is aimed at."""
+    path = folder / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["files"] = {
+        p.name: {"sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in folder.glob("*.csv")
+    }
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     ("damage", "message"),
     [
@@ -234,6 +247,7 @@ def copy(folder: Path, tmp_path: Path) -> Path:
 def test_a_missing_or_damaged_extract_is_named(folder, tmp_path, capsys, damage, message) -> None:
     target = copy(folder, tmp_path)
     damage(target / "factors.csv")
+    restamp(target)
     assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
     err = capsys.readouterr().err
     assert message in err
@@ -250,6 +264,7 @@ def write_daily(folder: Path, rows: list[dict]) -> None:
     lines = [",".join(columns)] + [",".join(str(r[c]) for c in columns) for r in rows]
     text = "".join(f"{line}\n" for line in lines)
     (folder / "daily.csv").write_text(text, encoding="utf-8")
+    restamp(folder)
 
 
 def whole_daily(tables) -> list[dict]:
@@ -299,6 +314,7 @@ def test_a_date_column_holding_something_else_is_refused(folder, tmp_path, capsy
     assert ",2007-10-09," in lines[1]
     lines[1] = lines[1].replace(",2007-10-09,", f",{bad},", 1)
     path.write_text("".join(lines), encoding="utf-8")
+    restamp(target)
     assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
     assert f"stress.csv line 2: not a date as YYYY-MM-DD: '{bad}'" in capsys.readouterr().err
     assert not (tmp_path / "d.html").exists()
@@ -313,5 +329,58 @@ def test_daily_rows_beside_no_zero_rate_risk_rows_are_refused(
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
     path.write_text("".join([lines[0], *(ln for ln in lines[1:] if ",bills," in ln)]),
                     encoding="utf-8")  # fmt: skip
+    restamp(target)
     assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
     assert "risk_metrics.csv has no rows at the zero rate" in capsys.readouterr().err
+
+
+def test_a_daily_file_the_manifest_does_not_list_is_refused(folder, tables, tmp_path, capsys):
+    # Right funds, right days: only the manifest shows another run wrote it.
+    target = copy(folder, tmp_path)
+    columns = list(COLUMNS["daily"])
+    rows = whole_daily(tables)
+    lines = [",".join(columns), *(",".join(str(r[c]) for c in columns) for r in rows)]
+    (target / "daily.csv").write_text("".join(f"{x}\n" for x in lines), encoding="utf-8")
+    assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
+    err = capsys.readouterr().err
+    assert f"{target / 'daily.csv'} is not from the run that wrote manifest.json" in err
+    assert not (tmp_path / "d.html").exists()
+
+
+def edit_factors(target: Path) -> None:
+    path = target / "factors.csv"
+    path.write_text(path.read_text(encoding="utf-8").replace("0.98", "0.97", 1), encoding="utf-8")
+
+
+def drop_manifest(target: Path) -> None:
+    (target / "manifest.json").unlink()
+
+
+def manifest_text(text: str):
+    return lambda target: (target / "manifest.json").write_text(text, encoding="utf-8")
+
+
+def list_a_missing_file(target: Path) -> None:
+    path = target / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["files"]["daily.csv"] = {"sha256": "0" * 64}
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (edit_factors, "factors.csv has changed since the extracts were written"),
+        (drop_manifest, "has no manifest.json: write the extracts"),
+        (manifest_text("{"), "manifest.json cannot be read"),
+        (manifest_text('{"files": []}'), "is not an extracts manifest"),
+        (manifest_text('{"files": {"factors.csv": {}}}'), "is not an extracts manifest"),
+        (list_a_missing_file, "lists daily.csv, which"),
+    ],
+)
+def test_extracts_not_all_from_one_run_are_refused(folder, tmp_path, capsys, change, message):
+    target = copy(folder, tmp_path)
+    change(target)
+    assert main(["--extracts", str(target), "--out", str(tmp_path / "d.html")]) == 1
+    assert message in capsys.readouterr().err
+    assert not (tmp_path / "d.html").exists()
