@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import json
 import math
 import shutil
@@ -47,7 +48,8 @@ def read(path: Path, name: str) -> list[dict]:
 def written(tmp_path_factory) -> dict[str, list[dict]]:
     out = tmp_path_factory.mktemp("extracts")
     assert main(["--results", str(RESULTS_DIR), "--no-prices", "--out", str(out)]) == 0
-    assert sorted(p.name for p in out.iterdir()) == sorted(f"{n}.csv" for n in RESULTS_FILES)
+    names = [*(f"{n}.csv" for n in RESULTS_FILES), "manifest.json"]
+    assert sorted(p.name for p in out.iterdir()) == sorted(names)
     return {n: read(out / f"{n}.csv", n) for n in RESULTS_FILES}
 
 
@@ -183,6 +185,21 @@ def test_factor_rows_hold_every_coefficient(written, results) -> None:
                 assert row["r_squared"] == fit["r_squared"]
                 count += 1
     assert count == len(rows) == 9 * (4 + 6)
+
+
+def test_the_manifest_lists_each_file_this_run_wrote(tmp_path: Path, results) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "daily.csv").write_text("left by an earlier run\n", encoding="utf-8")
+    assert main(["--results", str(RESULTS_DIR), "--no-prices", "--out", str(out)]) == 0
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["cache_sha256"] == results["risk"]["cache_sha256"]
+    assert sorted(manifest["files"]) == sorted(f"{n}.csv" for n in RESULTS_FILES)
+    for file, entry in manifest["files"].items():
+        data = (out / file).read_bytes()
+        assert entry["sha256"] == hashlib.sha256(data).hexdigest()
+        assert entry["rows"] == data.count(b"\n") - 1
+    assert not list(out.glob("*.partial"))
 
 
 def test_every_number_reads_back_as_the_float_written(tmp_path: Path) -> None:
@@ -360,6 +377,9 @@ def test_daily_rows_are_the_risk_command_s_series(tmp_path: Path, capsys) -> Non
     assert main(["--results", str(folder), "--cache", str(cache), "--out", str(out)]) == 0
     printed = capsys.readouterr().out
     assert f"{out / 'daily.csv'}  {521 * 4:,} rows" in printed
+    written = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert written["cache_sha256"] == manifest["sha256"]
+    assert written["files"]["daily.csv"]["rows"] == 521 * 4
     rows = read(out / "daily.csv", "daily")
     frame = pd.DataFrame(rows)
     assert list(frame["series"].unique()) == ["AAA", "BBB", "CCC", "portfolio"]

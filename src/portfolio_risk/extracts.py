@@ -46,12 +46,19 @@ is copied from a results file, never recomputed, except ``daily.csv``.
 ``factors.csv``
     One row per series, model (ff3, ff5) and term (alpha and each factor): estimate,
     OLS and Newey-West t statistics, with the regression's R squared.
+``manifest.json``
+    Written last: the checksum of the price cache the results came from, and each file
+    this run wrote with its SHA-256 and rows. A file in the folder that it does not list
+    (a ``daily.csv`` an earlier run left, say) or lists with another checksum is not
+    from this run, and the dashboard refuses it.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import io
 import json
 import math
 import os
@@ -68,6 +75,7 @@ from portfolio_risk.montecarlo import historical_portfolio_returns
 
 DEFAULT_RESULTS = Path("results")
 DEFAULT_OUT = Path("extracts")
+MANIFEST = "manifest.json"
 
 # The results files read, by what each extract calls them.
 RESULTS = {
@@ -484,28 +492,45 @@ def check(name: str, rows: Iterable[Mapping[str, Any]]) -> list[list[str]]:
     return lines
 
 
-def write(folder: Path, tables: Mapping[str, list[dict]]) -> list[Path]:
-    """Every table checked first, then written as ``<name>.csv`` (each file replaced whole)."""
+def _write_atomic(path: Path, data: bytes) -> None:
+    partial = path.with_name(path.name + ".partial")
+    partial.write_bytes(data)
+    os.replace(partial, path)
+
+
+def write(
+    folder: Path, tables: Mapping[str, list[dict]], cache_sha256: str | None = None
+) -> list[Path]:
+    """Every table checked first, then written as ``<name>.csv`` (each file replaced whole),
+    and last ``manifest.json``: the price cache's checksum and each file written, with
+    its SHA-256 and rows. A file the manifest does not list, or lists with another
+    checksum, did not come from this run."""
     checked = {name: check(name, rows) for name, rows in tables.items()}
     folder = Path(folder)
     if folder.exists() and not folder.is_dir():
         raise ExtractError(f"{folder} is a file; --out takes a folder")
     folder.mkdir(parents=True, exist_ok=True)
-    paths = []
+    paths, files = [], {}
     for name, lines in checked.items():
+        text = io.StringIO(newline="")
+        out = csv.writer(text, lineterminator="\n")
+        out.writerow(COLUMNS[name])
+        out.writerows(lines)
+        data = text.getvalue().encode("utf-8")
         path = folder / f"{name}.csv"
-        partial = path.with_name(path.name + ".partial")
-        with open(partial, "w", encoding="utf-8", newline="") as fh:
-            out = csv.writer(fh, lineterminator="\n")
-            out.writerow(COLUMNS[name])
-            out.writerows(lines)
-        os.replace(partial, path)
+        _write_atomic(path, data)
+        files[path.name] = {"sha256": hashlib.sha256(data).hexdigest(), "rows": len(lines)}
         paths.append(path)
+    manifest = {"cache_sha256": cache_sha256, "files": files}
+    _write_atomic(folder / MANIFEST, (json.dumps(manifest, indent=2) + "\n").encode("utf-8"))
     return paths
 
 
-def build(results_folder: Path, cache: Path | None = DEFAULT_CACHE) -> dict[str, list[dict]]:
-    """The extracts, from the results files and, unless ``cache`` is None, the prices."""
+def build(
+    results_folder: Path, cache: Path | None = DEFAULT_CACHE
+) -> tuple[dict[str, list[dict]], str]:
+    """The extracts, from the results files and, unless ``cache`` is None, the prices; and
+    the checksum of the price cache the results were computed from."""
     results = read_results(results_folder)
     tables = from_results(results)
     if cache is not None:
@@ -520,7 +545,7 @@ def build(results_folder: Path, cache: Path | None = DEFAULT_CACHE) -> dict[str,
         prices = load_cache(cache)
         rows = _read("daily", lambda r: daily(prices, r["risk"]["weights"]), ("risk",), results)
         tables = {"daily": rows} | tables
-    return tables
+    return tables, results["risk"]["cache_sha256"]
 
 
 def check_out(folder: Path) -> None:
@@ -550,8 +575,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         check_out(args.out)
-        tables = build(args.results, None if args.no_prices else args.cache)
-        paths = write(args.out, tables)
+        tables, cache_sha256 = build(args.results, None if args.no_prices else args.cache)
+        paths = write(args.out, tables, cache_sha256)
     except (ExtractError, DataError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
