@@ -3,12 +3,13 @@
 ``python -m portfolio_risk.dashboard --extracts extracts --out dashboard.html`` reads only
 the files ``portfolio_risk.extracts`` writes, as a Tableau workbook on them would, and
 writes one HTML page: the headline figures, then a chart per sheet of the spec. Every
-plotted figure is a value from the extracts, unchanged; the tests check that it is.
+plotted figure is a value from the extracts, unchanged but for costs, drawn in basis
+points; the tests compare each chart's values with the files.
 
 ``daily.csv`` is built from the price cache, which is not committed. Without it the two
 charts over time are left out and the page says so.
 
-By default the page carries Plotly's JavaScript (about 4.7 MB) so it opens offline;
+By default the page carries Plotly's JavaScript (about 4.8 MB) so it opens offline;
 ``--cdn`` links it from Plotly's CDN instead.
 """
 

@@ -114,13 +114,31 @@ def test_the_held_out_and_factor_charts_plot_the_extracts(tables, drawn) -> None
 def test_costs_and_sharpe_charts_plot_the_extracts(tables, drawn) -> None:
     fig = titled(drawn, "Compound return a year after trading costs")
     assert len(fig.data) == 4 * 6
-    trace = fig.data[0]
-    rows = [r for r in tables["trading_costs"] if (r["mix"], r["rule"]) == ("equity", "daily")]
-    assert list(trace.y) == [r["net_compound_return"] for r in rows]
-    assert list(trace.x) == pytest.approx([r["cost"] * 1e4 for r in rows], rel=1e-15)
+    for trace in fig.data:
+        mix = fig.layout.annotations[int(trace.xaxis[1:] or 1) - 1].text
+        rows = [r for r in tables["trading_costs"] if (r["mix"], r["rule"]) == (mix, trace.name)]
+        assert len(rows) == 6
+        assert list(trace.y) == [r["net_compound_return"] for r in rows]
+        # The one value not plotted as written: the cost, in basis points.
+        assert list(trace.x) == pytest.approx([r["cost"] * 1e4 for r in rows], rel=1e-15)
     fig = titled(drawn, "Sharpe ratio at a zero rate")
-    bills = [r for r in tables["risk_metrics"] if r["risk_free"] == "bills"]
-    assert list(fig.data[1].y) == [r["sharpe_ratio"] for r in bills]
+    for trace, rate in zip(fig.data, ("zero", "bills"), strict=True):
+        rows = {r["series"]: r for r in tables["risk_metrics"] if r["risk_free"] == rate}
+        assert list(trace.y) == [rows[s]["sharpe_ratio"] for s in trace.x]
+        assert len(trace.x) == 9
+
+
+def test_the_tail_chart_plots_each_series_99_figures(tables, drawn) -> None:
+    fig = titled(drawn, "One-day loss at 99%")
+    assert [(t.name, t.xaxis) for t in fig.data] == [
+        ("historical", "x"), ("historical", "x2"), ("normal", "x"), ("normal", "x2"),
+    ]  # fmt: skip
+    for trace in fig.data:
+        measure = "value_at_risk" if trace.xaxis == "x" else "expected_shortfall"
+        for series, value in zip(trace.x, trace.y, strict=True):
+            row = only(tables["tail_risk"], series=series, level=0.99, method=trace.name)
+            assert value == row[measure]
+    assert len(fig.data[0].x) == 9
 
 
 def daily_rows(tables) -> list[dict]:
