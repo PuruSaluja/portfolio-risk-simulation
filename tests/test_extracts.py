@@ -288,6 +288,49 @@ def test_a_folder_that_is_not_there_or_an_out_path_that_is_a_file_is_refused(
     assert main(["--results", str(RESULTS_DIR), "--no-prices", "--out", str(file)]) == 1
     assert "is a file; --out takes a folder" in capsys.readouterr().err
     assert file.read_text(encoding="utf-8") == "x"
+    assert main(["--results", str(RESULTS_DIR), "--no-prices", "--out", str(file / "x")]) == 1
+    assert f"cannot be written: {file} is a file" in capsys.readouterr().err
+
+
+def damage_json(path: Path, change) -> None:
+    result = json.loads(path.read_text(encoding="utf-8"))
+    change(result)
+    path.write_text(json.dumps(result), encoding="utf-8")
+
+
+def drop_weights(result: dict) -> None:
+    del result["frontier"][3]["weights"]
+
+
+def add_bad_level(result: dict) -> None:
+    tail = result["series"]["SPY"]["tail"]
+    tail["x"] = tail["95"]
+
+
+@pytest.mark.parametrize(
+    ("file", "change", "message"),
+    [
+        ("scenarios.json", lambda r: r.pop("stress"),
+         "scenarios.json do not hold what the stress extract reads (KeyError: 'stress')"),
+        ("factors.json", lambda r: r.update(series=[1, 2]),
+         "factors.json do not hold what the factors extract reads (AttributeError"),
+        ("frontier-cap30.json", drop_weights,
+         "frontier.json and frontier-cap30.json do not hold what the frontier extract reads"),
+        ("risk-metrics.json", add_bad_level,
+         "risk-metrics.json do not hold what the tail_risk extract reads (ValueError"),
+        ("construction-bills.json", lambda r: r["splits"][0].update(portfolios=None),
+         "construction-bills.json do not hold what the held_out extract reads"),
+    ],
+)  # fmt: skip
+def test_a_results_file_without_what_an_extract_reads_is_named(
+    tmp_path: Path, capsys, file, change, message
+) -> None:
+    folder = copy_results(tmp_path)
+    damage_json(folder / file, change)
+    out = tmp_path / "out"
+    assert main(["--results", str(folder), "--no-prices", "--out", str(out)]) == 1
+    assert message in capsys.readouterr().err
+    assert not out.exists()
 
 
 def prices() -> pd.DataFrame:
@@ -331,6 +374,23 @@ def test_daily_rows_are_the_risk_command_s_series(tmp_path: Path, capsys) -> Non
         assert lowest["drawdown"] == measured[name]["max_drawdown"]["depth"]
         assert lowest["date"] == measured[name]["max_drawdown"]["trough"]
         assert (group["drawdown"] <= 0).all()
+
+
+def test_risk_results_without_weights_are_named_for_the_daily_extract(
+    tmp_path: Path, capsys
+) -> None:
+    cache = tmp_path / "prices.csv"
+    manifest = write_cache(
+        prices(), cache, start=date(2023, 1, 1), end=date(2024, 12, 31), source="t"
+    )
+    folder = copy_results(tmp_path)
+    set_cache_sha(folder, manifest["sha256"])
+    damage_json(folder / RESULTS["risk"], lambda r: r.pop("weights"))
+    out = tmp_path / "out"
+    assert main(["--results", str(folder), "--cache", str(cache), "--out", str(out)]) == 1
+    err = capsys.readouterr().err
+    assert "risk-metrics.json do not hold what the daily extract reads (KeyError: 'weights')" in err
+    assert not out.exists()
 
 
 def test_a_cache_the_results_did_not_come_from_is_refused(tmp_path: Path, capsys) -> None:

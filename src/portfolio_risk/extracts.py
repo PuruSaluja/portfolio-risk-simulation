@@ -392,23 +392,35 @@ def factors(results: Mapping[str, Any]) -> list[dict]:
     return rows
 
 
+def _read(name: str, extract, files: Sequence[str], results: Mapping[str, Any]):
+    """``extract(results)``, naming the results files when one lacks what it reads."""
+    try:
+        return extract(results)
+    except (KeyError, IndexError, TypeError, AttributeError, ValueError) as exc:
+        named = " and ".join(RESULTS[f] for f in files)
+        raise ExtractError(
+            f"{named} do not hold what the {name} extract reads "
+            f"({type(exc).__name__}: {exc}); write them again with the README's commands"
+        ) from None
+
+
 def from_results(results: Mapping[str, Any]) -> dict[str, list[dict]]:
     """Every extract that comes from the results files alone."""
-    points, weights, named = frontier(results)
-    held, held_costs = held_out(results)
+    points, weights, named = _read("frontier", frontier, FRONTIERS, results)
+    held, held_costs = _read("held_out", held_out, [n for _, n in HELD], results)
     tables = {
-        "risk_metrics": risk_metrics(results),
-        "tail_risk": tail_risk(results),
-        "montecarlo": montecarlo(results),
-        "stress": stress(results),
-        "rebalancing": rebalancing(results),
-        "trading_costs": trading_costs(results),
+        "risk_metrics": _read("risk_metrics", risk_metrics, ("risk", "risk_bills"), results),
+        "tail_risk": _read("tail_risk", tail_risk, ("risk",), results),
+        "montecarlo": _read("montecarlo", montecarlo, ("montecarlo",), results),
+        "stress": _read("stress", stress, ("scenarios",), results),
+        "rebalancing": _read("rebalancing", rebalancing, ("scenarios",), results),
+        "trading_costs": _read("trading_costs", trading_costs, ("costs",), results),
         "frontier": points,
         "frontier_weights": weights,
         "portfolios": named,
         "held_out": held,
         "held_costs": held_costs,
-        "factors": factors(results),
+        "factors": _read("factors", factors, ("factors",), results),
     }
     assert tuple(tables) == RESULTS_FILES
     return tables
@@ -505,8 +517,23 @@ def build(results_folder: Path, cache: Path | None = DEFAULT_CACHE) -> dict[str,
                 f"{cache_sha[:12]}..., the results' {results_sha[:12]}...); fetch the "
                 "README's window or pass --no-prices"
             )
-        tables = {"daily": daily(load_cache(cache), results["risk"]["weights"])} | tables
+        prices = load_cache(cache)
+        rows = _read("daily", lambda r: daily(prices, r["risk"]["weights"]), ("risk",), results)
+        tables = {"daily": rows} | tables
     return tables
+
+
+def check_out(folder: Path) -> None:
+    """Refuse an ``--out`` that cannot be a folder, before any work: a file, or a path
+    under a file."""
+    folder = Path(folder)
+    if folder.exists() and not folder.is_dir():
+        raise ExtractError(f"{folder} is a file; --out takes a folder")
+    for parent in folder.parents:
+        if parent.exists():
+            if not parent.is_dir():
+                raise ExtractError(f"{folder} cannot be written: {parent} is a file")
+            break
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -522,8 +549,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
     try:
-        if args.out.exists() and not args.out.is_dir():
-            raise ExtractError(f"{args.out} is a file; --out takes a folder")
+        check_out(args.out)
         tables = build(args.results, None if args.no_prices else args.cache)
         paths = write(args.out, tables)
     except (ExtractError, DataError, ValueError, OSError) as exc:
