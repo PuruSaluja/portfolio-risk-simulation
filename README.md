@@ -3,12 +3,52 @@
 Monte Carlo simulation and risk analysis of multi-asset portfolios, on real
 daily market data.
 
-> **Status:** in progress. The data ingestion, the returns and covariance
-> engine, the Monte Carlo simulation, the risk measures, the scenario engine,
-> the mean-variance optimiser, the factor attribution, risk parity and
-> minimum CVaR, and trading costs are done; the parts below are built in
-> order, and every figure this README gives comes from a run of the committed
-> code.
+> **Status:** complete (see [Parts](#parts)). Every figure this README gives
+> comes from a run of the committed code on the real prices described below,
+> and each results file is given with the command that writes it.
+
+## What it found
+
+Eight funds' daily total returns, January 2005 to September 2026; the
+portfolio holds them in equal parts, rebalanced at every close. All of these
+are measured on that history, not projected:
+
+- **The equal-weight portfolio** returned 8.22% a year at 13.83% volatility,
+  a Sharpe ratio of 0.64 at a zero rate and 0.53 against the one-month
+  Treasury bill (over the days the bill covers, to August 2026); its deepest
+  fall was -38.3%, against SPY's -55.2% ([risk measures](#risk-measures)).
+- **Normality understates the tails and overstates the year.** History's
+  worst day in a thousand is a 5.07% loss, the normal model's 2.61% (the
+  Student-t 4.16%, the bootstrap 5.10%); the portfolio's one-day 99% expected
+  shortfall is 3.65%, the normal's 2.29%. Yet drawing days independently puts
+  the one-year standard deviation at 15.1% against history's 11.9%, because
+  daily moves partly reverse; a block bootstrap of 252-day blocks gives 12.1%
+  ([Monte Carlo](#monte-carlo-simulation)).
+- **Optimised portfolios disappointed out of sample.** Chosen on the years
+  before each of five splits and held after it, every mean-variance portfolio
+  fell short of the Sharpe ratio it expected (20 of 20), and equal weight beat
+  the uncapped minimum-variance and tangency portfolios after every split
+  ([frontier](#mean-variance-optimisation-and-the-efficient-frontier)).
+  Inverse volatility beat risk parity after every split
+  ([risk parity and minimum CVaR](#risk-parity-and-minimum-cvar)).
+- **Costs decide the rebalancing rule.** Daily rebalancing's lead over
+  monthly is gone at a one-way cost of 12.9 bp (equity) to 35.2 bp (equal
+  weight), and a 5-point band is the best rule from 5 bp for every mix
+  ([trading costs](#trading-costs)).
+- **Factors explain the equity funds, not the rest.** SPY has a market beta
+  of 0.99 and an R² of 0.986; the equal-weight portfolio's alpha is 0.65% a
+  year with a t statistic of 0.5, no evidence of any
+  ([factor attribution](#factor-attribution)).
+- **Daily bars cannot measure these funds' spreads.** Two published
+  high-low estimators read them as 9.8 to 57 (Abdi-Ranaldo) and 8.6 to 60
+  (Corwin-Schultz) times a one-cent spread, and simulation shows why
+  ([a negative result](#estimating-spreads-from-highs-and-lows-a-negative-result)).
+
+How each figure is computed is set out in its section: the data and its
+manifest first, then returns, simulation, risk measures, scenarios, costs,
+optimisation, factors and construction, each with its method, the command
+that writes its results file, and the results.
+[The dashboard](#tableau-extracts-and-dashboard) draws them together.
 
 ## The data is real
 
@@ -1337,6 +1377,35 @@ zero rate made with the same command at a zero rate on the same days
   split, inverse volatility over risk parity, risk parity never over equal
   weight, and minimum CVaR over minimum variance after four of the five.
 
+## Tableau extracts and dashboard
+
+```bash
+python -m portfolio_risk.extracts --out extracts           # needs the price cache
+python -m portfolio_risk.dashboard --extracts extracts --out extracts/dashboard.html
+```
+
+`extracts` flattens the committed results files into thirteen CSV files a
+Tableau workbook reads with its text connector: one row per figure's key
+(series and rate, mix and rule and cost, split and portfolio, and so on), each
+number written as the shortest text that reads back as the same float.
+Twelve copy figures from `results/` and nothing else; `daily.csv` (each fund's
+and the portfolio's daily return, wealth and drawdown, 49,221 rows) is built
+from the price cache, so like the cache it is not committed, and `--no-prices`
+leaves it out. The command refuses results from more than one cache, and a
+cache other than the one they came from. On the real cache, `daily.csv`'s
+deepest drawdown and its date equal the risk measures' for all nine series.
+
+[`docs/dashboard-spec.md`](docs/dashboard-spec.md) specifies the dashboard:
+sources and field types, calculated fields, parameters, ten sheets, layout,
+and how in-sample and held-out figures are labelled. **It has not been built
+in Tableau**, as none was available. `dashboard` draws it with Plotly from the
+extracts alone, as the workbook would read them: headline tiles, then one
+chart per sheet. The tests compare every chart's plotted values with the
+extract files. The page carries Plotly's JavaScript so it opens offline
+(8.1 MB with `daily.csv`; `--cdn` links the script instead, 3.3 MB). Without
+`daily.csv` the two charts over time are left out and the page says so; a
+`daily.csv` that is not of the risk measures' series and days is refused.
+
 ## Parts
 
 | Part | State |
@@ -1352,7 +1421,7 @@ zero rate made with the same command at a zero rate on the same days
 | Cost-aware backtest: transaction costs, spreads (assumed, and a measured floor), rebalancing drag | done |
 | Spread estimates from daily highs and lows (Abdi-Ranaldo, Corwin-Schultz), tested by simulation: they cannot measure these funds' spreads | done |
 | Tests: closed-form checks across modules, Monte Carlo convergence, reproducible seeds | done |
-| Tableau extracts, dashboard spec and Plotly reproduction | to come |
+| Tableau extracts, dashboard spec and Plotly reproduction | done |
 
 ## Development
 
