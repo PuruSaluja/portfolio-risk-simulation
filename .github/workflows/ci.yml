@@ -56,7 +56,7 @@ jobs:
             python -m pip install -c constraints.txt -e ".[dev]"
           elif [ "${{ matrix.versions }}" = lowest ]; then
             # pyproject.toml's lower bounds; test_package checks the two agree.
-            python -m pip install "numpy==2.0.2" "pandas==2.2.2" "scipy==1.13.1" "yfinance==0.2.58" -e ".[dev]"
+            python -m pip install "numpy==2.0.2" "pandas==2.2.2" "plotly==7.1.0" "scipy==1.13.1" "yfinance==0.2.58" -e ".[dev]"
           else
             python -m pip install -e ".[dev]"
           fi
