@@ -45,6 +45,11 @@ command writes it from a local price cache, and the Plotly page leaves the
 charts over time out when it is missing. The page refuses a `daily.csv` that
 does not cover the risk measures' series and days.
 
+`manifest.json`, which the extracts command writes last, lists each file it
+wrote with its SHA-256. A workbook refreshed from the folder should check
+it, as the Plotly page does: a file the manifest does not list, or lists with
+another checksum, came from another run and is not shown.
+
 ## Calculated fields
 
 | Field | Source | Formula |

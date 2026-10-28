@@ -1397,6 +1397,8 @@ from the price cache, so like the cache it is not committed, and `--no-prices`
 leaves it out. The command refuses results from more than one cache, and a
 cache other than the one they came from. On the real cache, `daily.csv`'s
 deepest drawdown and its date equal the risk measures' for all nine series.
+Last it writes `manifest.json`: the cache's checksum and each file it wrote,
+with its SHA-256 and rows.
 
 [`docs/dashboard-spec.md`](docs/dashboard-spec.md) specifies the dashboard:
 sources and field types, calculated fields, parameters, ten sheets, layout,
@@ -1406,8 +1408,11 @@ extracts alone, as the workbook would read them: headline tiles, then one
 chart per sheet. The tests compare every chart's plotted values with the
 extract files. The page carries Plotly's JavaScript so it opens offline
 (8.1 MB with `daily.csv`; `--cdn` links the script instead, 3.3 MB). Without
-`daily.csv` the two charts over time are left out and the page says so; a
-`daily.csv` that is not of the risk measures' series and days is refused.
+`daily.csv` the two charts over time are left out and the page says so. The
+page draws only files the manifest lists with the checksum it gives, so a
+`daily.csv` an earlier run left beside a `--no-prices` run, or any file
+edited since, is refused; so is a `daily.csv` that is not of the risk
+measures' series and days.
 
 ## Parts
 
