@@ -1416,6 +1416,14 @@ page draws only files the manifest lists with the checksum it gives, so a
 edited since, is refused; so is a `daily.csv` that is not of the risk
 measures' series and days.
 
+Two pictures of the page are committed, for the README:
+[`images/dashboard-overview.png`](images/dashboard-overview.png), from the top
+of the page to the end of the charts over time, and
+[`images/dashboard-stress.png`](images/dashboard-stress.png), the stress
+periods. Both are captures of the page the two commands above write from the
+committed results and the price cache, in Chromium at a width of 1,280 pixels,
+cut at the charts' headings and not edited.
+
 ## Parts
 
 | Part | State |
