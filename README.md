@@ -52,6 +52,16 @@ costs, optimisation, factors and construction, each with its method, the
 command that writes its results file, and the results.
 [The dashboard](docs/guide.md#tableau-extracts-and-dashboard) draws them together.
 
+The top of the dashboard: the equal-weight portfolio's headline figures, then
+each fund's growth and its fall from its highest point.
+
+![The dashboard's six headline figures above two charts over 2005 to 2026: growth of one dollar for each fund and the portfolio, and each one's drawdown](docs/images/dashboard-overview.png)
+
+Its stress table, further down: what each fund and each mix returned over six
+falls of the S&P 500, from the index's closing high to its closing low.
+
+![A heatmap of returns over six stress periods, from the 2008 financial crisis to 2022, for eight funds and four mixes](docs/images/dashboard-stress.png)
+
 ## The data is real
 
 Daily closes and dividends of eight exchange-traded funds from Yahoo
