@@ -44,9 +44,9 @@ PORTFOLIO = "#1f2933"
 ZERO, BILLS = "#9da5ad", "#4c78a8"
 QUANTILES = ("q1", "q5", "q50", "q95", "q99")
 MODELS = ("historical", "normal", "t", "bootstrap", "bootstrap:252")
-"""The one-year distributions shown: the data's own, and the models the README compares."""
+"""The one-year distributions shown: the data's own, and the models the guide compares."""
 STRESS_RULE = "monthly"
-"""The rule the stress heatmap shows the mixes under, as the README's table does."""
+"""The rule the stress heatmap shows the mixes under, as the guide's table does."""
 FRONTIER_COMMAND = ("frontier", 1.0, "zero")
 CONSTRUCTION_COMMAND = ("construction", 1.0, "zero")
 FACTOR_MODEL = "ff5"

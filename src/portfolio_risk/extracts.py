@@ -215,7 +215,7 @@ def read_results(folder: Path) -> dict[str, dict[str, Any]]:
             results[name] = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             raise ExtractError(
-                f"{path} is missing: write it with the command the README gives for it"
+                f"{path} is missing: write it with the command docs/guide.md gives for it"
             ) from None
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ExtractError(f"{path} cannot be read: {exc}") from None
@@ -408,7 +408,7 @@ def _read(name: str, extract, files: Sequence[str], results: Mapping[str, Any]):
         named = " and ".join(RESULTS[f] for f in files)
         raise ExtractError(
             f"{named} do not hold what the {name} extract reads "
-            f"({type(exc).__name__}: {exc}); write them again with the README's commands"
+            f"({type(exc).__name__}: {exc}); write them again with the commands in docs/guide.md"
         ) from None
 
 
@@ -540,7 +540,7 @@ def build(
             raise ExtractError(
                 f"{cache} is not the cache the results were computed from (checksum "
                 f"{cache_sha[:12]}..., the results' {results_sha[:12]}...); fetch the "
-                "README's window or pass --no-prices"
+                "window docs/guide.md gives or pass --no-prices"
             )
         prices = load_cache(cache)
         rows = _read("daily", lambda r: daily(prices, r["risk"]["weights"]), ("risk",), results)
