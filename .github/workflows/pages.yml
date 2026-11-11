@@ -1,0 +1,66 @@
+# Publishes the Plotly dashboard to GitHub Pages from main. The page is built here
+# from the committed results files alone, with the versions in constraints.txt. The
+# prices are not in the repository, so the extracts are written with --no-prices and
+# the page leaves out its two charts over time and says so.
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One at a time, in the order pushed: a run waiting behind another is replaced by a
+# newer one, so the commit published last is the newest. A deployment under way is
+# left to finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+
+      - name: Install
+        run: python -m pip install -c constraints.txt -e .
+
+      - name: Write the extracts
+        run: python -m portfolio_risk.extracts --out extracts --no-prices
+
+      - name: Draw the dashboard
+        run: python -m portfolio_risk.dashboard --extracts extracts --out site/index.html
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    # A deployment fails on a repository with Pages turned off, as a fork's usually is;
+    # there the run stops at a built page.
+    if: github.event.repository.has_pages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
