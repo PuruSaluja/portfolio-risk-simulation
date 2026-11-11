@@ -50,9 +50,12 @@ The [guide](docs/guide.md) sets out how each figure is computed: the data
 and its manifest first, then returns, simulation, risk measures, scenarios,
 costs, optimisation, factors and construction, each with its method, the
 command that writes its results file, and the results.
-[The dashboard](docs/guide.md#tableau-extracts-and-dashboard) draws them together.
+[The dashboard](docs/guide.md#tableau-extracts-and-dashboard) draws them together,
+and **[is published here](https://purusaluja.github.io/portfolio-risk-simulation/)**
+without its two charts over time, which need the prices this repository does
+not redistribute.
 
-The top of the dashboard: the equal-weight portfolio's headline figures, then
+The top of the dashboard as a local run with the prices draws it: the equal-weight portfolio's headline figures, then
 each fund's growth and its fall from its highest point.
 
 ![The dashboard's six headline figures above two charts over 2005 to 2026: growth of one dollar for each fund and the portfolio, and each one's drawdown](docs/images/dashboard-overview.png)

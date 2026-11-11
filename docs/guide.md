@@ -1416,6 +1416,15 @@ page draws only files the manifest lists with the checksum it gives, so a
 edited since, is refused; so is a `daily.csv` that is not of the risk
 measures' series and days.
 
+The page is published at <https://purusaluja.github.io/portfolio-risk-simulation/>
+by [`pages.yml`](../.github/workflows/pages.yml), which on every push to `main`
+writes the extracts with `--no-prices` and draws the page from them, with the
+versions in `constraints.txt`. It is therefore built from the committed
+results files alone: the headline tiles and eight of the ten charts. The two
+charts over time trace each fund's value day by day, which would publish the
+price history the repository leaves out, so the published page omits them and says
+so; a local run with the price cache draws all ten.
+
 Two pictures of the page are committed, for the README:
 [`images/dashboard-overview.png`](images/dashboard-overview.png), from the top
 of the page to the end of the charts over time, and
