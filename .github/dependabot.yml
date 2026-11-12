@@ -1,0 +1,34 @@
+# Dependabot opens a pull request when something the project depends on has a
+# newer release. CI runs on each one, so an upgrade is seen to pass before it
+# is merged.
+version: 2
+updates:
+  # The actions the workflows use. Nothing else moves them.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Python gets no version updates. pyproject.toml gives the oldest version
+  # each dependency was used with, and CI's "newest" jobs install the newest
+  # releases on every push, so a release that breaks the suite already shows.
+  # constraints.txt is the development environment's versions, which CI's
+  # "pinned" job runs; moved by a bot it would be a second "newest" and no
+  # longer what is installed. Security updates do not count against the limit:
+  # with Dependabot alerts and security updates on for the repository, a
+  # version with a published advisory still gets its pull request.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: build
+      include: scope
