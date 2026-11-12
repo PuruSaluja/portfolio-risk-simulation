@@ -1459,6 +1459,12 @@ pytest
 ruff check . && ruff format --check .
 ```
 
+CI runs the suite with the newest versions `pyproject.toml` allows, with the
+oldest, and with the versions in `constraints.txt`, the ones installed in
+the development environment. Dependabot (`.github/dependabot.yml`) opens a
+pull request once a week when an action the workflows use has a newer
+version, and none for Python, which those runs cover on every push.
+
 The tests never reach Yahoo or the data library: they stand in for the
 downloads. Beside each module's own tests, three files check the project as a
 whole:
